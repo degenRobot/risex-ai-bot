@@ -1,2 +1,5 @@
 .env
 .python-version
+poetry.lock
+
+*.pyc

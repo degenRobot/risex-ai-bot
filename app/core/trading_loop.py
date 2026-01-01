@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-from ..models import Account, TradeDecision
+from ..models import Account, TradeDecision, TradingDecisionLog, MarketContext
 from ..services.ai_client import AIClient, AIClientError
 from ..services.rise_client import RiseClient, RiseAPIError
 from ..services.mock_social import MockSocialClient
@@ -155,15 +155,49 @@ class TradingBot:
         market_data = self._get_current_market_data()
         current_positions = self._format_positions_for_ai(positions)
         
-        # 4. Make AI trading decision
+        # 4. Make AI trading decision with historical context
         try:
             balance_data = await self.rise_client.get_balance(account.address)
             available_balance = float(balance_data.get("cross_margin_balance", 1000.0))  # Default for testnet
             
             self.logger.info(f"   💰 Available balance: ${available_balance:.2f}")
             
-            decision = await self.ai_client.get_trade_decision(
-                persona, market_data, current_positions, available_balance
+            # Get trading history for decision making
+            trading_history = self.storage.get_recent_successful_decisions(account.id, days=7)
+            
+            # Get recent social posts for context
+            recent_posts = await self._get_recent_social_activity(persona.handle)
+            
+            # Use enhanced AI decision making if we have history or social data
+            if trading_history or recent_posts:
+                self.logger.info(f"   📚 Using {len(trading_history)} historical insights for decision making")
+                decision = await self.ai_client.get_enhanced_trade_decision(
+                    persona, market_data, current_positions, available_balance,
+                    trading_history=trading_history, recent_posts=recent_posts
+                )
+            else:
+                decision = await self.ai_client.get_trade_decision(
+                    persona, market_data, current_positions, available_balance
+                )
+            
+            # Create comprehensive decision log
+            import uuid
+            decision_log = TradingDecisionLog(
+                id=str(uuid.uuid4()),
+                account_id=account.id,
+                persona_name=persona.name,
+                market_context=MarketContext(
+                    btc_price=market_data.get('btc_price', 0),
+                    eth_price=market_data.get('eth_price', 0),
+                    btc_change=market_data.get('btc_change', 0),
+                    eth_change=market_data.get('eth_change', 0)
+                ),
+                available_balance=available_balance,
+                current_positions=current_positions,
+                total_pnl=total_pnl,
+                recent_posts=recent_posts[:5] if recent_posts else [],
+                decision=decision,
+                executed=False
             )
             
             self.logger.info(f"   🤖 AI Decision: {decision.should_trade}")
@@ -175,46 +209,63 @@ class TradingBot:
             
             # 5. Execute trade if decision is positive
             if decision.should_trade and decision.confidence > 0.6:
-                await self._execute_trade_decision(account, decision, available_balance)
+                execution_result = await self._execute_trade_decision(account, decision, available_balance)
+                decision_log.executed = bool(execution_result.get('success', False))
+                decision_log.execution_details = execution_result
             else:
                 if not decision.should_trade:
                     self.logger.info("   ⏭️  No trade action taken")
                 else:
                     self.logger.info(f"   🤔 Confidence too low ({decision.confidence:.1%}), skipping trade")
             
+            # Save decision log for future learning
+            self.storage.save_trading_decision(decision_log)
+            
         except AIClientError as e:
             self.logger.error(f"   ❌ AI decision error: {e}")
         except Exception as e:
             self.logger.error(f"   ❌ Unexpected error: {e}")
     
-    async def _execute_trade_decision(self, account: Account, decision: TradeDecision, balance: float):
-        """Execute a trading decision."""
+    async def _execute_trade_decision(self, account: Account, decision: TradeDecision, balance: float) -> Dict:
+        """Execute a trading decision and return result."""
         if not decision.market or not decision.action:
             self.logger.warning("   ⚠️  Invalid trade decision - missing market or action")
-            return
+            return {"success": False, "error": "Invalid decision"}
         
-        # Get market ID
-        market_id = None
-        for market in self.market_cache.get("markets", []):
-            if market.get("symbol") == decision.market:
-                market_id = int(market.get("market_id"))
-                break
+        # Get market ID from cache or lookup
+        market_id = self.market_cache.get(f"{decision.market.lower()}_market_id")
+        
+        if not market_id:
+            # Try to find in markets list
+            for market in self.market_cache.get("markets", []):
+                base_asset = market.get("base_asset_symbol", "")
+                if "/" in base_asset and base_asset.split("/")[0] == decision.market:
+                    market_id = int(market.get("market_id"))
+                    break
         
         if not market_id:
             self.logger.warning(f"   ⚠️  Market {decision.market} not found")
-            return
+            return {"success": False, "error": f"Market {decision.market} not found"}
         
         # Calculate trade size
+        price_key = f"{decision.market.lower()}_price"
         trade_size = min(
             balance * decision.size_percent,
-            self.max_position_usd / self.market_cache.get(f"{decision.market}_price", 50000)  # Fallback price
+            self.max_position_usd / self.market_cache.get(price_key, 50000)  # Fallback price
         )
         
-        current_price = self.market_cache.get(f"{decision.market}_price", 0)
+        current_price = self.market_cache.get(price_key, 0)
         
         if self.dry_run:
             self.logger.info(f"   🧪 DRY RUN: Would {decision.action} {trade_size:.6f} {decision.market} at ~${current_price:,.0f}")
-            return
+            return {
+                "success": True, 
+                "dry_run": True, 
+                "action": decision.action, 
+                "market": decision.market,
+                "size": trade_size,
+                "price": current_price
+            }
         
         # Execute real trade
         try:
@@ -252,41 +303,60 @@ class TradingBot:
                 )
                 self.storage.save_trade(trade)
                 
+                return {
+                    "success": True,
+                    "order_id": order_id,
+                    "trade_id": trade.id,
+                    "action": decision.action,
+                    "market": decision.market,
+                    "size": trade_size,
+                    "price": current_price
+                }
+                
             else:
                 self.logger.error(f"   ❌ Order failed: {order_response}")
+                return {
+                    "success": False,
+                    "error": "Order placement failed",
+                    "response": order_response
+                }
                 
         except RiseAPIError as e:
             self.logger.error(f"   ❌ Trade execution error: {e}")
+            return {"success": False, "error": f"API error: {e}"}
         except Exception as e:
             self.logger.error(f"   ❌ Unexpected trade error: {e}")
+            return {"success": False, "error": f"Unexpected error: {e}"}
     
     async def _update_market_cache(self):
-        """Update cached market data."""
+        """Update cached market data with real RISE API data."""
         try:
-            markets = await self.rise_client.get_markets()
-            self.market_cache["markets"] = markets
+            # Use the enhanced method to get real market data
+            enhanced_data = await self.rise_client.get_enhanced_market_data()
+            
+            # Update cache with real data
+            self.market_cache.update(enhanced_data)
             self.market_cache["last_update"] = datetime.now()
             
-            # Get latest prices for BTC and ETH
-            for market in markets:
-                symbol = market.get("symbol")
-                market_id = int(market.get("market_id", 0))
-                
-                if symbol in ["BTC", "ETH"]:
-                    try:
-                        price = await self.rise_client.get_latest_price(market_id)
-                        if price:
-                            self.market_cache[f"{symbol}_price"] = price
-                            
-                            # Calculate 24h change (mock for now)
-                            # In production, you'd compare with previous day's data
-                            change = (price - 90000) / 90000 if symbol == "BTC" else (price - 3000) / 3000
-                            self.market_cache[f"{symbol}_change"] = min(max(change, -0.3), 0.3)  # Cap at ±30%
-                    except Exception:
-                        pass
+            # Also get the full markets list for reference
+            markets = await self.rise_client.get_markets()
+            self.market_cache["markets"] = markets
+            
+            # Log the real market data
+            if enhanced_data.get("btc_price"):
+                self.logger.info(f"   📊 Real Market Data - BTC: ${enhanced_data['btc_price']:,.0f} ({enhanced_data.get('btc_change', 0):.1%})")
+            if enhanced_data.get("eth_price"):
+                self.logger.info(f"   📊 Real Market Data - ETH: ${enhanced_data['eth_price']:,.0f} ({enhanced_data.get('eth_change', 0):.1%})")
             
         except Exception as e:
             self.logger.error(f"Market cache update error: {e}")
+            # Fallback to some default values if API fails
+            self.market_cache.update({
+                "btc_price": 95000,
+                "eth_price": 3500,
+                "btc_change": 0.0,
+                "eth_change": 0.0
+            })
     
     async def _update_social_activity(self):
         """Update social media activity for all profiles."""
@@ -311,24 +381,28 @@ class TradingBot:
     def _get_current_market_data(self) -> Dict:
         """Format current market data for AI decision making."""
         return {
-            "btc_price": self.market_cache.get("BTC_price", 95000),
-            "eth_price": self.market_cache.get("ETH_price", 3500),
-            "btc_change": self.market_cache.get("BTC_change", 0.0),
-            "eth_change": self.market_cache.get("ETH_change", 0.0),
+            "btc_price": self.market_cache.get("btc_price", 95000),
+            "eth_price": self.market_cache.get("eth_price", 3500),
+            "btc_change": self.market_cache.get("btc_change", 0.0),
+            "eth_change": self.market_cache.get("eth_change", 0.0),
         }
     
     def _format_positions_for_ai(self, positions: List[Dict]) -> Dict[str, float]:
         """Format positions for AI decision making."""
         formatted = {"BTC": 0.0, "ETH": 0.0}
         
+        # Get market ID to symbol mapping from cache
+        btc_market_id = self.market_cache.get("btc_market_id", 1)
+        eth_market_id = self.market_cache.get("eth_market_id", 2)
+        
         for position in positions:
             market_id = int(position.get("market_id", 0))
             size = float(position.get("size", 0))
             
-            # Map market ID to symbol (simplified)
-            if market_id == 1:  # Assuming market 1 is BTC
+            # Map market ID to symbol using real market data
+            if market_id == btc_market_id:
                 formatted["BTC"] = size
-            elif market_id == 2:  # Assuming market 2 is ETH
+            elif market_id == eth_market_id:
                 formatted["ETH"] = size
         
         return formatted

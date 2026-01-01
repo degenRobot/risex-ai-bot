@@ -193,9 +193,9 @@ class RiseClient:
         return response.get("data", {})
     
     async def get_market_data(self, market_id: int, resolution: str = "1D", limit: int = 100) -> List[Dict[str, Any]]:
-        """Get trading view data for a market."""
+        """Get trading view data for a market using the correct endpoint."""
         response = await self._request(
-            "GET", f"/v1/markets/{market_id}/trading-view-data",
+            "GET", f"/v1/markets/id/{market_id}/trading-view-data",
             params={"resolution": resolution, "limit": limit}
         )
         data = response.get("data", [])
@@ -457,3 +457,90 @@ class RiseClient:
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
+    
+    # Enhanced API methods for real data
+    async def get_transfer_history(self, account: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get account transfer history."""
+        response = await self._request(
+            "GET", "/v1/account/transfer-history",
+            params={"account": account, "limit": limit}
+        )
+        return response.get("data", [])
+    
+    async def get_account_trade_history(self, account: str, market_id: Optional[int] = None, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get account trade history with optional market filter."""
+        params = {"account": account, "limit": limit}
+        if market_id is not None:
+            params["market_id"] = market_id
+        
+        response = await self._request(
+            "GET", "/v1/account/trade-history", 
+            params=params
+        )
+        return response.get("data", [])
+    
+    async def get_realtime_market_prices(self) -> Dict[str, float]:
+        """Get real-time prices for all markets."""
+        markets = await self.get_markets()
+        prices = {}
+        
+        for market in markets:
+            base_asset = market.get("base_asset_symbol", "")
+            last_price = market.get("last_price")
+            
+            if base_asset and last_price:
+                # Extract the base currency (BTC from BTC/USDC)
+                symbol = base_asset.split("/")[0] if "/" in base_asset else base_asset
+                prices[symbol] = float(last_price)
+        
+        return prices
+    
+    async def calculate_24h_change(self, market_id: int) -> float:
+        """Calculate 24h price change for a market."""
+        try:
+            # Get 24h data
+            data = await self.get_market_data(market_id, resolution="1H", limit=24)
+            if len(data) >= 2:
+                current_price = float(data[-1].get("close", 0))
+                old_price = float(data[0].get("open", 0))
+                
+                if old_price > 0:
+                    return (current_price - old_price) / old_price
+        except Exception:
+            pass
+        return 0.0
+    
+    async def get_enhanced_market_data(self) -> Dict[str, Any]:
+        """Get comprehensive market data with prices and changes."""
+        markets = await self.get_markets()
+        market_data = {}
+        
+        for market in markets:
+            market_id = int(market.get("market_id", 0))
+            base_asset = market.get("base_asset_symbol", "")
+            last_price = market.get("last_price")
+            change_24h = market.get("change_24h")
+            high_24h = market.get("high_24h")
+            low_24h = market.get("low_24h")
+            
+            # Extract symbol (BTC from BTC/USDC)
+            if "/" in base_asset:
+                symbol = base_asset.split("/")[0]
+                
+                if symbol in ["BTC", "ETH"] and last_price:
+                    # Convert price change to percentage
+                    price_change_pct = 0.0
+                    if change_24h and high_24h and low_24h:
+                        # change_24h is the absolute price change
+                        # Calculate percentage based on price 24h ago
+                        price_24h_ago = float(last_price) - float(change_24h)
+                        if price_24h_ago > 0:
+                            price_change_pct = float(change_24h) / price_24h_ago
+                    
+                    market_data[f"{symbol.lower()}_price"] = float(last_price)
+                    market_data[f"{symbol.lower()}_change"] = price_change_pct
+                    market_data[f"{symbol.lower()}_market_id"] = market_id
+                    market_data[f"{symbol.lower()}_high_24h"] = float(high_24h) if high_24h else 0
+                    market_data[f"{symbol.lower()}_low_24h"] = float(low_24h) if low_24h else 0
+        
+        return market_data

@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from ..models import Account, Persona, Trade
+from ..models import Account, Persona, Trade, TradingDecisionLog, TradingSession
 
 
 class StorageError(Exception):
@@ -24,6 +24,8 @@ class JSONStorage:
         self.accounts_file = self.data_dir / "accounts.json"
         self.trades_file = self.data_dir / "trades.json"
         self.personas_file = self.data_dir / "personas.json"
+        self.decisions_file = self.data_dir / "trading_decisions.json"
+        self.sessions_file = self.data_dir / "trading_sessions.json"
     
     def _load_json(self, file_path: Path) -> Dict:
         """Load JSON data from file."""
@@ -222,3 +224,148 @@ class JSONStorage:
                 files_backed_up.append(file_path.name)
         
         return f"Backup created at {backup_subdir} with files: {', '.join(files_backed_up)}"
+    
+    # Trading decision logging
+    def save_trading_decision(self, decision_log: TradingDecisionLog) -> None:
+        """Save trading decision with full context."""
+        decisions = self._load_json(self.decisions_file)
+        
+        # Organize by account_id
+        if decision_log.account_id not in decisions:
+            decisions[decision_log.account_id] = []
+        
+        decisions[decision_log.account_id].append(decision_log.model_dump())
+        self._save_json(self.decisions_file, decisions)
+    
+    def get_trading_decisions(self, account_id: str, limit: int = 20) -> List[TradingDecisionLog]:
+        """Get recent trading decisions for account."""
+        decisions = self._load_json(self.decisions_file)
+        account_decisions = decisions.get(account_id, [])
+        
+        # Sort by timestamp (most recent first) and limit
+        sorted_decisions = sorted(
+            account_decisions, 
+            key=lambda d: d.get('timestamp', ''), 
+            reverse=True
+        )
+        
+        result = []
+        for decision_data in sorted_decisions[:limit]:
+            try:
+                result.append(TradingDecisionLog(**decision_data))
+            except Exception as e:
+                print(f"Warning: Skipping corrupted decision: {e}")
+                continue
+        
+        return result
+    
+    def get_recent_successful_decisions(self, account_id: str, days: int = 7) -> List[TradingDecisionLog]:
+        """Get recent successful trading decisions for learning."""
+        from datetime import timedelta
+        
+        decisions = self.get_trading_decisions(account_id, limit=100)
+        cutoff_date = datetime.now() - timedelta(days=days)
+        
+        successful_decisions = []
+        for decision in decisions:
+            if (decision.timestamp >= cutoff_date and 
+                decision.executed and 
+                decision.outcome_tracked and 
+                decision.outcome_pnl is not None and 
+                decision.outcome_pnl > 0):
+                successful_decisions.append(decision)
+        
+        return successful_decisions[:10]  # Return top 10 successful decisions
+    
+    def update_decision_outcome(self, decision_id: str, pnl: float, reasoning: str) -> bool:
+        """Update the outcome of a trading decision."""
+        decisions = self._load_json(self.decisions_file)
+        
+        for account_id, account_decisions in decisions.items():
+            for decision_data in account_decisions:
+                if decision_data.get('id') == decision_id:
+                    decision_data['outcome_tracked'] = True
+                    decision_data['outcome_pnl'] = pnl
+                    decision_data['outcome_reasoning'] = reasoning
+                    self._save_json(self.decisions_file, decisions)
+                    return True
+        
+        return False
+    
+    # Trading session management
+    def save_trading_session(self, session: TradingSession) -> None:
+        """Save trading session."""
+        sessions = self._load_json(self.sessions_file)
+        
+        if session.account_id not in sessions:
+            sessions[session.account_id] = []
+        
+        # Update existing session or add new one
+        for i, existing_session in enumerate(sessions[session.account_id]):
+            if existing_session.get('id') == session.id:
+                sessions[session.account_id][i] = session.model_dump()
+                self._save_json(self.sessions_file, sessions)
+                return
+        
+        # Add new session
+        sessions[session.account_id].append(session.model_dump())
+        self._save_json(self.sessions_file, sessions)
+    
+    def get_trading_sessions(self, account_id: str, limit: int = 10) -> List[TradingSession]:
+        """Get recent trading sessions for account."""
+        sessions = self._load_json(self.sessions_file)
+        account_sessions = sessions.get(account_id, [])
+        
+        # Sort by start_time (most recent first) and limit
+        sorted_sessions = sorted(
+            account_sessions, 
+            key=lambda s: s.get('start_time', ''), 
+            reverse=True
+        )
+        
+        result = []
+        for session_data in sorted_sessions[:limit]:
+            try:
+                result.append(TradingSession(**session_data))
+            except Exception as e:
+                print(f"Warning: Skipping corrupted session: {e}")
+                continue
+        
+        return result
+    
+    def get_trading_analytics(self, account_id: str) -> Dict:
+        """Get trading analytics for an account."""
+        decisions = self.get_trading_decisions(account_id, limit=100)
+        sessions = self.get_trading_sessions(account_id, limit=20)
+        
+        # Calculate decision metrics
+        total_decisions = len(decisions)
+        executed_decisions = len([d for d in decisions if d.executed])
+        tracked_decisions = len([d for d in decisions if d.outcome_tracked])
+        profitable_decisions = len([d for d in decisions if d.outcome_tracked and d.outcome_pnl and d.outcome_pnl > 0])
+        
+        # Calculate session metrics
+        total_sessions = len(sessions)
+        profitable_sessions = len([s for s in sessions if s.session_pnl > 0])
+        
+        avg_decision_confidence = sum(d.decision.confidence for d in decisions) / total_decisions if total_decisions > 0 else 0
+        avg_session_pnl = sum(s.session_pnl for s in sessions) / total_sessions if total_sessions > 0 else 0
+        
+        # Success rates
+        execution_rate = executed_decisions / total_decisions if total_decisions > 0 else 0
+        win_rate = profitable_decisions / tracked_decisions if tracked_decisions > 0 else 0
+        session_win_rate = profitable_sessions / total_sessions if total_sessions > 0 else 0
+        
+        return {
+            "total_decisions": total_decisions,
+            "executed_decisions": executed_decisions,
+            "tracked_decisions": tracked_decisions,
+            "profitable_decisions": profitable_decisions,
+            "execution_rate": execution_rate,
+            "win_rate": win_rate,
+            "avg_confidence": avg_decision_confidence,
+            "total_sessions": total_sessions,
+            "profitable_sessions": profitable_sessions,
+            "session_win_rate": session_win_rate,
+            "avg_session_pnl": avg_session_pnl,
+        }

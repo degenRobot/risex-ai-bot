@@ -4,7 +4,12 @@
 import asyncio
 import os
 import signal
+import sys
+from pathlib import Path
 from dotenv import load_dotenv
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.core.account_manager import AccountManager
 from app.core.trading_loop import TradingBot
@@ -236,19 +241,19 @@ async def run_continuous_bot():
 
 
 if __name__ == "__main__":
+    import sys
+    
     print("Automated Trading System Test")
-    print("Choose test mode:")
-    print("1. Quick test (3 iterations)")
-    print("2. Continuous mode (manual stop)")
-    print()
     
-    mode = input("Enter choice (1-2): ").strip()
-    
-    if mode == "2":
-        print("\nStarting continuous mode...")
+    # Check for command line arguments
+    if len(sys.argv) > 1 and sys.argv[1] == "--continuous":
+        print("Starting continuous mode...")
         asyncio.run(run_continuous_bot())
     else:
-        print("\nStarting quick test mode...")
+        print("Starting quick test mode (3 iterations)...")
+        print("Use --continuous flag for continuous mode")
+        print()
+        
         success = asyncio.run(test_automated_trading())
         
         if success:

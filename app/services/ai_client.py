@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 import httpx
 
 from ..config import settings
-from ..models import Persona, TradeDecision, TradingStyle
+from ..models import Persona, TradeDecision, TradingStyle, TradingDecisionLog
 
 
 class AIClientError(Exception):
@@ -268,3 +268,133 @@ Base your analysis on mentions of crypto, market conditions, and general mood.
         except Exception:
             # Return neutral sentiment if analysis fails
             return {"bullish": 0.5, "bearish": 0.5, "neutral": 0.5}
+    
+    async def get_enhanced_trade_decision(
+        self,
+        persona: Persona,
+        market_data: Dict,
+        current_positions: Dict,
+        available_balance: float,
+        trading_history: List[TradingDecisionLog] = None,
+        recent_posts: List[str] = None
+    ) -> TradeDecision:
+        """Get AI trading decision with historical context and learning."""
+        
+        # Format current positions
+        position_summary = []
+        for asset, size in current_positions.items():
+            if size != 0:
+                position_summary.append(f"{asset}: {size:.4f}")
+        positions_text = ", ".join(position_summary) if position_summary else "No open positions"
+        
+        # Analyze trading history for insights
+        history_insights = ""
+        if trading_history and len(trading_history) > 0:
+            successful_trades = [d for d in trading_history if d.outcome_tracked and d.outcome_pnl and d.outcome_pnl > 0]
+            failed_trades = [d for d in trading_history if d.outcome_tracked and d.outcome_pnl and d.outcome_pnl < 0]
+            
+            if successful_trades:
+                success_patterns = []
+                for trade in successful_trades[:3]:  # Top 3 successful trades
+                    success_patterns.append(f"✅ {trade.decision.action} {trade.decision.market} at ${trade.market_context.btc_price if trade.decision.market == 'BTC' else trade.market_context.eth_price:,.0f} - Reason: {trade.decision.reasoning[:50]}... - Profit: ${trade.outcome_pnl:.2f}")
+                
+                history_insights += f"\nYOUR RECENT SUCCESSFUL TRADES:\n" + "\n".join(success_patterns)
+            
+            if failed_trades:
+                failure_patterns = []
+                for trade in failed_trades[:2]:  # Top 2 failed trades for learning
+                    failure_patterns.append(f"❌ {trade.decision.action} {trade.decision.market} at ${trade.market_context.btc_price if trade.decision.market == 'BTC' else trade.market_context.eth_price:,.0f} - Reason: {trade.decision.reasoning[:50]}... - Loss: ${trade.outcome_pnl:.2f}")
+                
+                history_insights += f"\n\nYOUR RECENT LOSSES (LEARN FROM THESE):\n" + "\n".join(failure_patterns)
+        
+        # Analyze social sentiment if available
+        sentiment_context = ""
+        if recent_posts:
+            try:
+                sentiment = await self.analyze_market_sentiment(recent_posts)
+                if sentiment['bullish'] > 0.6:
+                    sentiment_context = "\nSOCIAL SENTIMENT: Bullish vibes in the community"
+                elif sentiment['bearish'] > 0.6:
+                    sentiment_context = "\nSOCIAL SENTIMENT: Bearish sentiment detected"
+                else:
+                    sentiment_context = "\nSOCIAL SENTIMENT: Mixed/neutral sentiment"
+            except Exception:
+                pass
+
+        prompt = f"""
+You are {persona.name}, an experienced crypto trader with this profile:
+
+TRADING PERSONA:
+- Style: {persona.trading_style.value}
+- Risk Tolerance: {persona.risk_tolerance:.1f}/1.0
+- Bio: {persona.bio}
+- Traits: {', '.join(persona.personality_traits)}
+- Preferred Assets: {', '.join(persona.favorite_assets)}
+
+CURRENT MARKET CONDITIONS:
+- BTC Price: ${market_data.get('btc_price', 0):,.0f}
+- ETH Price: ${market_data.get('eth_price', 0):,.0f}
+- BTC 24h Change: {market_data.get('btc_change', 0):.1%}
+- ETH 24h Change: {market_data.get('eth_change', 0):.1%}
+
+YOUR CURRENT SITUATION:
+- Available Balance: ${available_balance:,.2f} USDC
+- Current Positions: {positions_text}
+{sentiment_context}
+{history_insights}
+
+Based on your personality, market conditions, and LEARNING FROM YOUR TRADING HISTORY, decide your next move.
+- If you see patterns in your successful trades, consider similar setups
+- If you see patterns in your losses, AVOID making the same mistakes
+- Stay true to your trading style but be adaptive
+
+Respond with JSON:
+{{
+  "should_trade": true/false,
+  "action": "buy" or "sell" or "close" or null,
+  "market": "BTC" or "ETH" or null,
+  "size_percent": 0.05-0.5 (% of balance, be conservative based on history),
+  "confidence": 0.1-1.0,
+  "reasoning": "Your reasoning considering current conditions AND lessons from trading history"
+}}
+
+Only trade if you have strong conviction. Learn from your past decisions.
+"""
+
+        messages = [
+            {
+                "role": "system", 
+                "content": f"You are {persona.name}, an experienced crypto trader who learns from past decisions. Make informed trading decisions based on your personality, market conditions, and trading history. Always respond with valid JSON only."
+            },
+            {"role": "user", "content": prompt}
+        ]
+        
+        response = await self._chat_completion(messages, json_mode=True)
+        
+        try:
+            # Clean and parse JSON
+            json_start = response.find('{')
+            json_end = response.rfind('}') + 1
+            if json_start >= 0 and json_end > json_start:
+                response = response[json_start:json_end]
+            
+            data = json.loads(response)
+            
+            # Validate and clamp values
+            size_percent = float(data.get("size_percent", 0.1))
+            size_percent = max(0.05, min(size_percent, 0.5))  # Clamp between 5% and 50%
+            
+            confidence = float(data.get("confidence", 0.5))
+            confidence = max(0.1, min(confidence, 1.0))  # Clamp between 10% and 100%
+            
+            return TradeDecision(
+                should_trade=bool(data["should_trade"]),
+                action=data.get("action"),
+                market=data.get("market"),
+                size_percent=size_percent,
+                confidence=confidence,
+                reasoning=data["reasoning"]
+            )
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            # Fall back to basic decision if enhanced version fails
+            return await self.get_trade_decision(persona, market_data, current_positions, available_balance)

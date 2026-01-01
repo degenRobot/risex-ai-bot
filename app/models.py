@@ -62,3 +62,56 @@ class TradeDecision(BaseModel):
     size_percent: Optional[float] = None  # % of available margin
     confidence: float
     reasoning: str
+
+
+class MarketContext(BaseModel):
+    """Market context at the time of decision."""
+    btc_price: float
+    eth_price: float
+    btc_change: float
+    eth_change: float
+    timestamp: datetime = datetime.now()
+
+
+class TradingDecisionLog(BaseModel):
+    """Comprehensive log of trading decision with full context."""
+    id: str
+    account_id: str
+    persona_name: str
+    
+    # Market context
+    market_context: MarketContext
+    
+    # Account state
+    available_balance: float
+    current_positions: dict  # {"BTC": 0.01, "ETH": 0.0}
+    total_pnl: float
+    
+    # Recent social activity
+    recent_posts: List[str]
+    
+    # AI Decision
+    decision: TradeDecision
+    
+    # Execution result
+    executed: bool
+    execution_details: Optional[dict] = None  # Trade result if executed
+    
+    # Outcome tracking (to be filled later)
+    outcome_tracked: bool = False
+    outcome_pnl: Optional[float] = None
+    outcome_reasoning: Optional[str] = None
+    
+    timestamp: datetime = datetime.now()
+
+
+class TradingSession(BaseModel):
+    """A complete trading session with decisions and outcomes."""
+    id: str
+    account_id: str
+    start_time: datetime
+    end_time: Optional[datetime] = None
+    decisions: List[TradingDecisionLog] = []
+    session_pnl: float = 0.0
+    total_trades: int = 0
+    successful_trades: int = 0
