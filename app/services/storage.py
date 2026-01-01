@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from ..models import Account, Persona, Trade, TradingDecisionLog, TradingSession
+from ..models.pending_actions import PendingAction, ActionStatus
 
 
 class StorageError(Exception):
@@ -16,7 +17,12 @@ class StorageError(Exception):
 class JSONStorage:
     """Simple JSON file-based storage system."""
     
-    def __init__(self, data_dir: str = "data"):
+    def __init__(self, data_dir: str = None):
+        # Use environment variable or default
+        if data_dir is None:
+            import os
+            data_dir = os.environ.get("DATA_DIR", "data")
+        
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(exist_ok=True)
         
@@ -26,6 +32,7 @@ class JSONStorage:
         self.personas_file = self.data_dir / "personas.json"
         self.decisions_file = self.data_dir / "trading_decisions.json"
         self.sessions_file = self.data_dir / "trading_sessions.json"
+        self.pending_actions_file = self.data_dir / "pending_actions.json"
     
     def _load_json(self, file_path: Path) -> Dict:
         """Load JSON data from file."""
@@ -369,3 +376,123 @@ class JSONStorage:
             "session_win_rate": session_win_rate,
             "avg_session_pnl": avg_session_pnl,
         }
+    
+    # Pending actions management
+    def save_pending_action(self, action: PendingAction) -> None:
+        """Save pending action to storage."""
+        actions = self._load_json(self.pending_actions_file)
+        
+        # Organize by account_id
+        if action.account_id not in actions:
+            actions[action.account_id] = {}
+        
+        actions[action.account_id][action.id] = action.model_dump()
+        self._save_json(self.pending_actions_file, actions)
+    
+    def get_pending_action(self, action_id: str) -> Optional[PendingAction]:
+        """Get pending action by ID."""
+        actions = self._load_json(self.pending_actions_file)
+        
+        for account_id, account_actions in actions.items():
+            if action_id in account_actions:
+                try:
+                    return PendingAction(**account_actions[action_id])
+                except Exception as e:
+                    print(f"Warning: Failed to load action {action_id}: {e}")
+                    return None
+        
+        return None
+    
+    def get_pending_actions(self, account_id: str, status: Optional[ActionStatus] = None) -> List[PendingAction]:
+        """Get pending actions for account, optionally filtered by status."""
+        actions = self._load_json(self.pending_actions_file)
+        account_actions = actions.get(account_id, {})
+        
+        result = []
+        for action_id, action_data in account_actions.items():
+            try:
+                action = PendingAction(**action_data)
+                if status is None or action.status == status:
+                    result.append(action)
+            except Exception as e:
+                print(f"Warning: Skipping corrupted action {action_id}: {e}")
+                continue
+        
+        # Sort by created_at (most recent first)
+        result.sort(key=lambda a: a.created_at, reverse=True)
+        return result
+    
+    def get_all_pending_actions(self) -> List[PendingAction]:
+        """Get all pending actions across all accounts."""
+        actions = self._load_json(self.pending_actions_file)
+        
+        result = []
+        for account_id, account_actions in actions.items():
+            for action_id, action_data in account_actions.items():
+                try:
+                    action = PendingAction(**action_data)
+                    if action.status == ActionStatus.PENDING:
+                        result.append(action)
+                except Exception as e:
+                    print(f"Warning: Skipping corrupted action {action_id}: {e}")
+                    continue
+        
+        return result
+    
+    def update_pending_action_status(self, action_id: str, status: ActionStatus, **kwargs) -> bool:
+        """Update pending action status with optional fields."""
+        actions = self._load_json(self.pending_actions_file)
+        
+        for account_id, account_actions in actions.items():
+            if action_id in account_actions:
+                account_actions[action_id]["status"] = status.value
+                
+                # Update optional fields
+                if status == ActionStatus.TRIGGERED and "triggered_at" not in kwargs:
+                    account_actions[action_id]["triggered_at"] = datetime.now().isoformat()
+                
+                if status == ActionStatus.EXECUTED and "executed_at" not in kwargs:
+                    account_actions[action_id]["executed_at"] = datetime.now().isoformat()
+                
+                for key, value in kwargs.items():
+                    if key in ["triggered_at", "executed_at", "error_message", "result"]:
+                        account_actions[action_id][key] = value
+                
+                self._save_json(self.pending_actions_file, actions)
+                return True
+        
+        return False
+    
+    def cleanup_expired_actions(self, days_old: int = 7) -> int:
+        """Remove old expired/cancelled/executed actions."""
+        from datetime import timedelta
+        
+        actions = self._load_json(self.pending_actions_file)
+        cutoff_date = datetime.now() - timedelta(days=days_old)
+        removed_count = 0
+        
+        for account_id in list(actions.keys()):
+            account_actions = actions[account_id]
+            
+            for action_id in list(account_actions.keys()):
+                try:
+                    action = PendingAction(**account_actions[action_id])
+                    
+                    # Remove old non-pending actions
+                    if (action.status in [ActionStatus.EXPIRED, ActionStatus.CANCELLED, 
+                                         ActionStatus.EXECUTED, ActionStatus.FAILED] and
+                        action.created_at < cutoff_date):
+                        del account_actions[action_id]
+                        removed_count += 1
+                        
+                except Exception:
+                    # Remove corrupted actions
+                    del account_actions[action_id]
+                    removed_count += 1
+            
+            # Remove empty accounts
+            if not account_actions:
+                del actions[account_id]
+        
+        self._save_json(self.pending_actions_file, actions)
+        return removed_count

@@ -1,0 +1,396 @@
+"""FastAPI server for RISE AI Trading Bot."""
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
+import logging
+
+from ..services.storage import JSONStorage
+from ..models import Account
+from ..models.pending_actions import ActionStatus
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Initialize FastAPI
+app = FastAPI(
+    title="RISE AI Trading Bot API",
+    description="API for managing AI trading profiles on RISE testnet",
+    version="1.0.0"
+)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Storage instance
+storage = JSONStorage()
+
+# Active trading status (managed by main bot)
+active_traders = {}
+
+
+class ProfileSummary(BaseModel):
+    """Profile summary response."""
+    handle: str
+    name: str
+    trading_style: str
+    is_trading: bool
+    total_pnl: float
+    position_count: int
+    pending_actions: int
+
+
+class ProfileDetail(BaseModel):
+    """Detailed profile response."""
+    handle: str
+    name: str
+    bio: str
+    trading_style: str
+    risk_tolerance: float
+    personality_traits: List[str]
+    is_trading: bool
+    account_address: str
+    positions: Dict[str, Any]
+    pending_actions: List[Dict[str, Any]]
+    recent_trades: List[Dict[str, Any]]
+    total_pnl: float
+    win_rate: Optional[float]
+
+
+class ActionResponse(BaseModel):
+    """Response for action operations."""
+    success: bool
+    message: str
+    data: Optional[Dict[str, Any]] = None
+
+
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {
+        "name": "RISE AI Trading Bot API",
+        "version": "1.0.0",
+        "status": "operational",
+        "docs": "/docs"
+    }
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    try:
+        # Check if storage is accessible
+        accounts = storage.list_accounts()
+        return {
+            "status": "healthy",
+            "accounts": len(accounts),
+            "storage": "connected"
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+
+
+@app.get("/api/profiles", response_model=List[ProfileSummary])
+async def list_profiles():
+    """List all trading profiles."""
+    try:
+        accounts = storage.list_accounts()
+        profiles = []
+        
+        for account in accounts:
+            if account.persona:
+                # Get trading status from external tracking
+                is_trading = account.id in active_traders
+                
+                # Get basic stats
+                positions = []  # Would be fetched from RISE API
+                pending_actions = storage.get_pending_actions(
+                    account.id, 
+                    status=ActionStatus.PENDING
+                )
+                
+                # Calculate basic P&L (simplified)
+                trades = storage.get_trades(account.id, limit=100)
+                total_pnl = sum(t.pnl for t in trades if hasattr(t, 'pnl') and t.pnl)
+                
+                profiles.append(ProfileSummary(
+                    handle=account.persona.handle,
+                    name=account.persona.name,
+                    trading_style=account.persona.trading_style.value,
+                    is_trading=is_trading,
+                    total_pnl=total_pnl,
+                    position_count=len(positions),
+                    pending_actions=len(pending_actions)
+                ))
+        
+        return profiles
+        
+    except Exception as e:
+        logger.error(f"Error listing profiles: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/profiles/{handle}", response_model=ProfileDetail)
+async def get_profile(handle: str):
+    """Get detailed profile information."""
+    try:
+        # Find account by persona handle
+        accounts = storage.list_accounts()
+        account = None
+        
+        for acc in accounts:
+            if acc.persona and acc.persona.handle == handle:
+                account = acc
+                break
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        # Get detailed information
+        is_trading = account.id in active_traders
+        
+        # Get pending actions
+        pending_actions = storage.get_pending_actions(
+            account.id,
+            status=ActionStatus.PENDING
+        )
+        pending_summary = []
+        for action in pending_actions:
+            pending_summary.append({
+                "id": action.id,
+                "type": action.action_type.value,
+                "condition": f"{action.condition.field} {action.condition.operator.value} {action.condition.value}",
+                "market": action.action_params.market,
+                "created_at": action.created_at.isoformat()
+            })
+        
+        # Get recent trades
+        trades = storage.get_trades(account.id, limit=10)
+        recent_trades = []
+        for trade in trades:
+            recent_trades.append({
+                "id": trade.id,
+                "market": getattr(trade, 'market', 'Unknown'),
+                "side": trade.side,
+                "size": trade.size,
+                "price": trade.price,
+                "reasoning": trade.reasoning,
+                "timestamp": trade.timestamp.isoformat(),
+                "status": trade.status
+            })
+        
+        # Calculate analytics
+        analytics = storage.get_trading_analytics(account.id)
+        
+        # Mock positions (would be fetched from RISE API)
+        positions = {}
+        
+        return ProfileDetail(
+            handle=account.persona.handle,
+            name=account.persona.name,
+            bio=account.persona.bio,
+            trading_style=account.persona.trading_style.value,
+            risk_tolerance=account.persona.risk_tolerance,
+            personality_traits=account.persona.personality_traits,
+            is_trading=is_trading,
+            account_address=account.address,
+            positions=positions,
+            pending_actions=pending_summary,
+            recent_trades=recent_trades,
+            total_pnl=analytics.get("avg_session_pnl", 0) * analytics.get("total_sessions", 0),
+            win_rate=analytics.get("win_rate")
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting profile {handle}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/profiles/{handle}/start", response_model=ActionResponse)
+async def start_trading(handle: str):
+    """Start trading for a profile."""
+    try:
+        # Find account
+        accounts = storage.list_accounts()
+        account = None
+        
+        for acc in accounts:
+            if acc.persona and acc.persona.handle == handle:
+                account = acc
+                break
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        if account.id in active_traders:
+            return ActionResponse(
+                success=False,
+                message="Profile is already trading"
+            )
+        
+        # Mark as active (actual bot process handles trading)
+        active_traders[account.id] = True
+        
+        return ActionResponse(
+            success=True,
+            message=f"Trading started for {handle}",
+            data={"account_id": account.id}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error starting trading for {handle}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/profiles/{handle}/stop", response_model=ActionResponse)
+async def stop_trading(handle: str):
+    """Stop trading for a profile."""
+    try:
+        # Find account
+        accounts = storage.list_accounts()
+        account = None
+        
+        for acc in accounts:
+            if acc.persona and acc.persona.handle == handle:
+                account = acc
+                break
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        if account.id not in active_traders:
+            return ActionResponse(
+                success=False,
+                message="Profile is not currently trading"
+            )
+        
+        # Mark as inactive
+        del active_traders[account.id]
+        
+        return ActionResponse(
+            success=True,
+            message=f"Trading stopped for {handle}"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error stopping trading for {handle}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/profiles/{handle}/actions")
+async def get_pending_actions(handle: str):
+    """Get pending actions for a profile."""
+    try:
+        # Find account
+        accounts = storage.list_accounts()
+        account = None
+        
+        for acc in accounts:
+            if acc.persona and acc.persona.handle == handle:
+                account = acc
+                break
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        # Get all pending actions
+        actions = storage.get_pending_actions(account.id)
+        
+        result = []
+        for action in actions:
+            result.append({
+                "id": action.id,
+                "type": action.action_type.value,
+                "status": action.status.value,
+                "condition": {
+                    "field": action.condition.field,
+                    "operator": action.condition.operator.value,
+                    "value": action.condition.value,
+                    "market": action.condition.market
+                },
+                "params": action.action_params.model_dump(),
+                "created_at": action.created_at.isoformat(),
+                "expires_at": action.expires_at.isoformat() if action.expires_at else None,
+                "reasoning": action.reasoning
+            })
+        
+        return {"actions": result}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting actions for {handle}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/profiles/{handle}/actions/{action_id}", response_model=ActionResponse)
+async def cancel_action(handle: str, action_id: str):
+    """Cancel a pending action."""
+    try:
+        # Find account
+        accounts = storage.list_accounts()
+        account = None
+        
+        for acc in accounts:
+            if acc.persona and acc.persona.handle == handle:
+                account = acc
+                break
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        # Get action
+        action = storage.get_pending_action(action_id)
+        if not action:
+            raise HTTPException(status_code=404, detail="Action not found")
+        
+        if action.account_id != account.id:
+            raise HTTPException(status_code=403, detail="Action belongs to different profile")
+        
+        # Cancel action
+        success = storage.update_pending_action_status(
+            action_id, 
+            ActionStatus.CANCELLED
+        )
+        
+        if success:
+            return ActionResponse(
+                success=True,
+                message=f"Action {action_id} cancelled"
+            )
+        else:
+            return ActionResponse(
+                success=False,
+                message="Failed to cancel action"
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error cancelling action {action_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Set active traders reference for bot integration
+def set_active_traders(traders_dict):
+    """Set reference to active traders from main bot."""
+    global active_traders
+    active_traders = traders_dict

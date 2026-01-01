@@ -2,7 +2,7 @@
 
 An AI-powered trading bot for RISE testnet that creates unique trading personas and makes autonomous trading decisions. Each persona has distinct characteristics derived from social media analysis and makes trades based on its personality and risk tolerance.
 
-## 🎯 Overview
+## Overview
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
@@ -15,13 +15,13 @@ An AI-powered trading bot for RISE testnet that creates unique trading personas 
 ```
 
 **Key Features:**
-- 🤖 AI-generated trading personas with unique personalities
-- 🔐 Gasless trading using RISE's gasless architecture
-- 💰 Automatic USDC faucet integration for testnet
-- 📊 Real-time market analysis and decision making
-- 🎮 Simple REST API for bot management
+- AI-generated trading personas with unique personalities
+- Gasless trading using RISE's gasless architecture
+- Automatic USDC faucet integration for testnet
+- Real-time market analysis and decision making
+- Simple REST API for bot management
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Installation
 
@@ -63,25 +63,33 @@ poetry run python test_ai_persona.py
 poetry run python test_rise_integration.py
 ```
 
-## 🏗️ Project Structure
+## Project Structure
 
 ```
 risex-ai-bot/
 ├── app/                          # Main application code
 │   ├── core/
 │   │   ├── account_manager.py    # Account & persona management
-│   │   └── trading_loop.py       # Automated trading bot with decision logging
+│   │   ├── trading_loop.py       # Automated trading bot with decision logging
+│   │   ├── market_manager.py     # Global market data manager (NEW) ⚡
+│   │   └── parallel_executor.py  # Parallel profile executor (NEW) ⚡
 │   ├── services/
 │   │   ├── rise_client.py        # RISE API client (gasless trading)
 │   │   ├── ai_client.py          # OpenRouter AI client with history-aware decisions
+│   │   ├── ai_tools.py           # AI tool definitions (NEW) 🛠️
 │   │   ├── mock_social.py        # Mock social media profiles
-│   │   └── storage.py            # JSON storage with decision logging
+│   │   └── storage.py            # JSON storage with decision logging + pending actions
+│   ├── models/
+│   │   ├── __init__.py           # Core models
+│   │   └── pending_actions.py    # Pending action models (NEW) 🎯
 │   ├── api/                      # FastAPI endpoints (ready for expansion)
 │   ├── config.py                 # Configuration management
 │   └── models.py                 # Pydantic models with decision logging
 ├── scripts/                      # Production scripts
-│   └── run_trading_bot.py        # Main trading bot runner
+│   ├── run_trading_bot.py        # Original trading bot runner
+│   └── run_enhanced_bot.py       # Enhanced parallel bot (NEW) 🚀
 ├── tests/                        # Comprehensive test suite
+│   ├── test_enhanced_architecture.py # Test new architecture (NEW) ⚡
 │   ├── test_enhanced_system.py   # Test decision logging & history
 │   ├── test_automated_trading.py # Complete system test (recommended)
 │   ├── test_complete_flow.py     # RISE API integration test
@@ -91,11 +99,13 @@ risex-ai-bot/
 ├── data/                         # Persistent storage & trading logs
 │   ├── accounts.json            # Trading accounts
 │   ├── trading_decisions.json   # Decision logs with reasoning
-│   └── trading_sessions.json    # Trading sessions and outcomes
+│   ├── trading_sessions.json    # Trading sessions and outcomes
+│   └── pending_actions.json     # Pending conditional actions (NEW) 🎯
+├── ARCHITECTURE_DESIGN.md       # Enhanced architecture docs (NEW) 📚
 └── pyproject.toml               # Poetry configuration
 ```
 
-## 🔧 Core Components
+## Core Components
 
 ### RISE Client (`app/services/rise_client.py`)
 
@@ -160,7 +170,7 @@ async with AccountManager() as manager:
     status = await manager.check_account_status(account.id)
 ```
 
-## 🧪 Testing
+## Testing
 
 ### Automated Trading System Test
 
@@ -219,7 +229,7 @@ poetry run python test_rise_integration.py
 poetry run python test_end_to_end.py
 ```
 
-## 🤖 Automated Trading
+## Automated Trading
 
 ### Quick Start - Run the Bot
 
@@ -227,14 +237,45 @@ poetry run python test_end_to_end.py
 # Create demo accounts (first time setup)
 poetry run python scripts/run_trading_bot.py --create-accounts
 
-# Run in dry-run mode (safe testing with decision logging)
+# Run ORIGINAL bot (sequential processing)
 poetry run python scripts/run_trading_bot.py --interval 60
 
+# Run ENHANCED bot (parallel + tool calling) 🚀
+poetry run python scripts/run_enhanced_bot.py --interval 60
+
 # Run with live trading (requires confirmation)
-poetry run python scripts/run_trading_bot.py --live --interval 300 --max-position 50
+poetry run python scripts/run_enhanced_bot.py --live --interval 300
 ```
 
-**🧠 Enhanced Features:**
+### 🚀 Enhanced Architecture (NEW)
+
+**Parallel Execution + OpenRouter Tool Calling:**
+
+```bash
+# Run enhanced bot with parallel profile processing
+poetry run python scripts/run_enhanced_bot.py
+
+# Test enhanced architecture
+poetry run python tests/test_enhanced_architecture.py
+```
+
+**Key Improvements:**
+- **Parallel Processing**: All profiles execute simultaneously
+- **Tool Calling**: Structured AI actions via OpenRouter tools
+- **Global Market Data**: Shared data manager (30s updates)
+- **Pending Actions**: Stop loss, take profit, conditional orders
+- **Action Queue**: Automated execution when conditions are met
+
+**Available AI Tools:**
+- `place_market_order` - Immediate market execution
+- `place_limit_order` - Limit order at specific price
+- `close_position` - Close position (full or partial)
+- `set_stop_loss` - Automatic stop loss trigger
+- `set_take_profit` - Take profit at target price
+- `schedule_limit_order` - Conditional future order
+- `cancel_pending_action` - Cancel pending action
+
+**Enhanced Features:**
 - **Decision Logging**: Every trading decision is saved with full context
 - **Historical Learning**: AI learns from past successful/failed trades  
 - **Outcome Tracking**: Track P&L and success rates over time
@@ -242,14 +283,14 @@ poetry run python scripts/run_trading_bot.py --live --interval 300 --max-positio
 
 ### Automated Trading Features
 
-🔄 **Every X seconds, each AI trader:**
-1. 📱 Checks for new social media activity (simulated)
-2. 📊 Fetches real market data from RISE API
-3. 💰 Calculates P&L on open positions  
-4. 🤖 Makes AI trading decision based on personality
-5. 📈 Executes trades if confidence > 60%
+**Every X seconds, each AI trader:**
+1. Checks for new social media activity (simulated)
+2. Fetches real market data from RISE API
+3. Calculates P&L on open positions  
+4. Makes AI trading decision based on personality
+5. Executes trades if confidence > 60%
 
-🎭 **5 AI Trader Personalities:**
+**5 AI Trader Personalities:**
 - **crypto_degen** - Aggressive YOLO trader
 - **btc_hodler** - Conservative Bitcoin maximalist  
 - **trend_master** - Technical momentum trader
@@ -361,14 +402,14 @@ async def get_decision():
 asyncio.run(get_decision())
 ```
 
-## 🔐 Security Notes
+## Security Notes
 
 - **Different Keys Required**: Account and signer keys MUST be different for security
 - **Gasless Trading**: All transactions are sponsored by RISE API - no ETH needed
 - **Testnet Only**: This implementation is designed for RISE testnet
 - **Private Keys**: Never commit real private keys to version control
 
-## 🌐 RISE Testnet Info
+## RISE Testnet Info
 
 - **Network**: RISE Testnet
 - **Chain ID**: 11155931
@@ -377,7 +418,7 @@ asyncio.run(get_decision())
 - **API**: https://api.testnet.rise.trade
 - **Faucet**: Automatically triggered by deposit calls
 
-## 📚 API Reference
+## API Reference
 
 ### Configuration
 
@@ -406,7 +447,7 @@ Environment variables in `.env`:
 - `confidence`: Decision confidence level
 - `reasoning`: AI explanation
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch
@@ -414,11 +455,11 @@ Environment variables in `.env`:
 4. Ensure all tests pass: `poetry run pytest`
 5. Submit a pull request
 
-## 📄 License
+## License
 
 MIT License - see LICENSE file for details.
 
-## 🆘 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -441,7 +482,3 @@ MIT License - see LICENSE file for details.
 1. Check the test scripts output for detailed error information
 2. Review the RISE API documentation: https://developer.rise.trade
 3. Ensure you're using RISE testnet (not Ethereum mainnet/Sepolia)
-
----
-
-Built with ❤️ for the RISE ecosystem
