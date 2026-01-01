@@ -8,7 +8,7 @@ import logging
 
 from ..services.storage import JSONStorage
 from ..models import Account
-from ..models.pending_actions import ActionStatus
+from ..pending_actions import ActionStatus
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

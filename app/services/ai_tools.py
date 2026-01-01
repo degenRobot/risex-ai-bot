@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 import logging
 
-from ..models.pending_actions import (
+from ..pending_actions import (
     PendingAction, ActionType, ActionStatus, 
     TriggerCondition, OperatorType, ActionParams
 )

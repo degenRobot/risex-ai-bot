@@ -1,6 +1,7 @@
 """RISE API client with gasless trading support."""
 
 import asyncio
+import random
 import time
 from typing import Any, Dict, List, Optional
 
@@ -45,8 +46,13 @@ class RiseClient:
                 try:
                     error_data = e.response.json()
                     error_detail = error_data.get("message", error_detail)
+                    # Include more error details
+                    if "error" in error_data:
+                        error_detail = f"{error_detail}: {error_data['error']}"
+                    if "details" in error_data:
+                        error_detail = f"{error_detail} - {error_data['details']}"
                 except Exception:
-                    pass
+                    error_detail = f"{error_detail}: {e.response.text[:200]}"
                 raise RiseAPIError(f"API request failed: {error_detail}", e.response.status_code)
             except Exception as e:
                 raise RiseAPIError(f"Request failed: {str(e)}")
@@ -186,8 +192,9 @@ class RiseClient:
     
     async def get_balance(self, account: str) -> Dict[str, Any]:
         """Get account balance."""
+        # RISE uses cross-margin balance, not token balance
         response = await self._request(
-            "GET", "/v1/account/balance",
+            "GET", "/v1/account",
             params={"account": account}
         )
         return response.get("data", {})
@@ -273,17 +280,19 @@ class RiseClient:
             print(f"P&L calculation error: {e}")
             return {"total_pnl": 0.0, "positions": {}}
     
-    async def deposit_usdc(self, account_key: str, amount: float) -> Dict[str, Any]:
-        """Deposit USDC to PerpsManager contract."""
+    async def deposit_usdc(self, account_key: str, amount: float = 100.0) -> Dict[str, Any]:
+        """Deposit USDC to account (triggers faucet on testnet)."""
         account = EthAccount.from_key(account_key)
         
         # Get domain for signing
         domain = await self.get_eip712_domain()
         
-        # Create Deposit message (signed by main account, not signer)
-        amount_wei = int(amount * 10**18)  # Convert to wei
+        # Convert amount to wei (18 decimals for testnet USDC)
+        amount_wei = int(amount * 1e18)
         
-        deposit_data = {
+        # Create EIP-712 signature for Deposit type
+        # Deposit is signed by the MAIN account, not the signer
+        typed_data = {
             "domain": domain,
             "message": {
                 "account": account.address,
@@ -300,30 +309,34 @@ class RiseClient:
                 "Deposit": [
                     {"name": "account", "type": "address"},
                     {"name": "amount", "type": "uint256"},
-                ],
-            },
+                ]
+            }
         }
         
-        signature = self._sign_typed_data(deposit_data, account_key)
+        # Sign with MAIN account private key (not signer!)
+        signature = self._sign_typed_data(typed_data, account_key)
         
-        # Create permit parameters  
-        nonce = int(time.time() * 1_000_000_000)  # Nanosecond timestamp
+        # Create nonce using the RISE API algorithm
+        nonce = self._create_client_nonce(account.address)
         deadline = int(time.time()) + 300  # 5 minutes
         
-        # Submit deposit
+        # Prepare deposit request
+        # API expects decimal format for amount
+        deposit_request = {
+            "account": account.address,
+            "amount": str(amount),  # Decimal format, not wei
+            "permit_params": {
+                "account": account.address,
+                "signer": account.address,  # For deposits, account signs for itself
+                "deadline": str(deadline),  # API expects strings for numbers
+                "signature": signature,
+                "nonce": str(nonce)  # API expects string for nonce
+            }
+        }
+        
         return await self._request(
             "POST", "/v1/account/deposit",
-            json={
-                "account": account.address,
-                "amount": str(amount),  # API expects decimal format
-                "permit_params": {
-                    "account": account.address,
-                    "signer": account.address,  # For deposits, account signs for itself
-                    "deadline": deadline,
-                    "signature": signature,
-                    "nonce": str(nonce),
-                }
-            }
+            json=deposit_request
         )
     
     async def place_order(
@@ -377,7 +390,7 @@ class RiseClient:
         order_hash = keccak(encoded_order)
         
         # Create permit signature (signer signs)
-        nonce = int(time.time() * 1_000_000_000)  # Nanosecond timestamp
+        nonce = self._create_client_nonce(account.address)
         deadline = int(time.time()) + 300  # 5 minutes
         target = "0x68cAcD54a8c93A3186BF50bE6b78B761F728E1b4"  # PerpsManager
         
@@ -447,6 +460,29 @@ class RiseClient:
             sig[64] += 27
         
         return bytes(sig).hex()
+    
+    def _create_client_nonce(self, address: str) -> int:
+        """Create a unique client nonce following RISE API specification."""
+        # Milliseconds + 6 random digits to simulate nanoseconds
+        rand_6_digits = str(random.randint(0, 999999)).zfill(6)
+        base_nonce = f"{int(time.time() * 1000)}{rand_6_digits}"
+        
+        # Remove last 9 digits to get seconds
+        second_of_nonce = base_nonce[:-9]
+        
+        # Hash the seconds + lowercase address
+        hash_input = f"{second_of_nonce}{address.lower()}"
+        
+        # Java-style hash algorithm
+        hash_val = 0
+        for char in hash_input:
+            hash_val = ((hash_val * 31 + ord(char)) & 0xFFFFFFFF)
+            if hash_val >= 0x80000000:
+                hash_val -= 0x100000000
+        hash_val = hash_val & 0xFFFFFFFF
+        
+        # Take baseNonce without last 6 digits, then append last 6 digits of hash
+        return int(base_nonce[:-6] + str(hash_val)[-6:])
     
     async def close(self):
         """Cleanup method for async context manager."""

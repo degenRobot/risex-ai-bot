@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from ..models import Account, Persona, Trade, TradingDecisionLog, TradingSession
-from ..models.pending_actions import PendingAction, ActionStatus
+from ..pending_actions import PendingAction, ActionStatus
 
 
 class StorageError(Exception):

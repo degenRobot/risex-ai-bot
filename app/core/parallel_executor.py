@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Any
 
 from ..core.market_manager import get_market_manager
 from ..models import Account
-from ..models.pending_actions import PendingAction, ActionStatus, PendingActionSummary
+from ..pending_actions import PendingAction, ActionStatus, PendingActionSummary
 from ..services.ai_client import AIClient
 from ..services.ai_tools import TradingTools
 from ..services.rise_client import RiseClient
