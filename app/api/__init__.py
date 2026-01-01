@@ -1,0 +1,1 @@
+"""FastAPI REST endpoints for bot management."""
