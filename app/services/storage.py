@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from ..models import Account, Persona, Trade, TradingDecisionLog, TradingSession
+from ..models import Account, Persona, Trade, TradingDecisionLog, TradingSession, Position
 from ..pending_actions import PendingAction, ActionStatus
 
 
@@ -35,6 +35,7 @@ class JSONStorage:
         self.decisions_file = self.data_dir / "trading_decisions.json"
         self.sessions_file = self.data_dir / "trading_sessions.json"
         self.pending_actions_file = self.data_dir / "pending_actions.json"
+        self.positions_file = self.data_dir / "positions.json"
     
     def _load_json(self, file_path: Path) -> Dict:
         """Load JSON data from file."""
@@ -602,15 +603,17 @@ class JSONStorage:
     def get_recent_trades(self, account_id: str, limit: int = 5) -> List[Dict]:
         """Get recent trades for account."""
         trades = self._load_json(self.trades_file)
-        account_trades = []
         
-        for trade_data in trades.values():
-            if trade_data.get("account_id") == account_id:
-                account_trades.append(trade_data)
+        # Trades are stored as {account_id: [list of trades]}
+        account_trades = trades.get(account_id, [])
         
         # Sort by timestamp and return recent ones
-        account_trades.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-        return account_trades[:limit]
+        sorted_trades = sorted(
+            account_trades, 
+            key=lambda x: x.get("timestamp", ""), 
+            reverse=True
+        )
+        return sorted_trades[:limit]
     
     def get_profile_updates(self, account_id: str) -> Optional[Dict]:
         """Get profile updates for account."""
@@ -623,9 +626,95 @@ class JSONStorage:
         all_updates[account_id] = updates
         self._save_json(self.profile_updates_file, all_updates)
     
-    def save_chat_session(self, session_data: Dict) -> None:
-        """Save chat session data."""
-        sessions = self._load_json(self.chat_sessions_file)
-        session_id = session_data.get("session_id", "unknown")
-        sessions[session_id] = session_data
-        self._save_json(self.chat_sessions_file, sessions)
+    # Position tracking methods
+    def save_position_snapshot(self, position: Position) -> None:
+        """Save a position snapshot for P&L tracking."""
+        positions = self._load_json(self.positions_file)
+        
+        # Organize positions by account_id and timestamp
+        if position.account_id not in positions:
+            positions[position.account_id] = []
+        
+        # Add timestamp to make snapshots unique
+        position_data = position.model_dump()
+        position_data["snapshot_time"] = datetime.utcnow().isoformat()
+        
+        positions[position.account_id].append(position_data)
+        self._save_json(self.positions_file, positions)
+    
+    def get_latest_positions(self, account_id: str) -> List[Position]:
+        """Get the most recent position snapshot for an account."""
+        positions = self._load_json(self.positions_file)
+        account_positions = positions.get(account_id, [])
+        
+        if not account_positions:
+            return []
+        
+        # Group by market and get latest for each
+        latest_by_market = {}
+        for pos_data in account_positions:
+            market = pos_data.get("market")
+            if market:
+                if market not in latest_by_market or \
+                   pos_data.get("snapshot_time", "") > latest_by_market[market].get("snapshot_time", ""):
+                    latest_by_market[market] = pos_data
+        
+        # Convert to Position objects
+        result = []
+        for pos_data in latest_by_market.values():
+            try:
+                # Remove snapshot_time before creating Position
+                pos_data_copy = pos_data.copy()
+                pos_data_copy.pop("snapshot_time", None)
+                result.append(Position(**pos_data_copy))
+            except Exception as e:
+                print(f"Warning: Skipping corrupted position: {e}")
+        
+        return result
+    
+    def update_trade_with_pnl(self, trade_id: str, account_id: str, pnl: float, realized_pnl: float = None) -> bool:
+        """Update a trade with P&L information."""
+        trades = self._load_json(self.trades_file)
+        
+        if account_id in trades:
+            for i, trade_data in enumerate(trades[account_id]):
+                if trade_data.get("id") == trade_id:
+                    trade_data["pnl"] = pnl
+                    if realized_pnl is not None:
+                        trade_data["realized_pnl"] = realized_pnl
+                    trade_data["pnl_updated_at"] = datetime.utcnow().isoformat()
+                    
+                    trades[account_id][i] = trade_data
+                    self._save_json(self.trades_file, trades)
+                    return True
+        
+        return False
+    
+    def get_total_pnl(self, account_id: str) -> Dict[str, float]:
+        """Get total P&L for an account from latest positions."""
+        positions = self.get_latest_positions(account_id)
+        
+        total_unrealized = sum(p.unrealized_pnl for p in positions)
+        total_realized = sum(p.realized_pnl for p in positions)
+        
+        return {
+            "unrealized_pnl": total_unrealized,
+            "realized_pnl": total_realized,
+            "total_pnl": total_unrealized + total_realized
+        }
+    
+    def update_decision_outcome(self, decision_id: str, trade_id: str, pnl: float, status: str) -> None:
+        """Update a trading decision with actual outcome."""
+        decisions = self._load_json(self.trading_decisions_file)
+        
+        # Find and update the decision
+        for account_id, account_decisions in decisions.items():
+            for i, decision in enumerate(account_decisions):
+                if decision.get("id") == decision_id:
+                    decision["outcome_trade_id"] = trade_id
+                    decision["outcome_pnl"] = pnl
+                    decision["outcome_status"] = status
+                    decision["outcome_timestamp"] = datetime.utcnow().isoformat()
+                    decisions[account_id][i] = decision
+                    self._save_json(self.trading_decisions_file, decisions)
+                    return

@@ -103,6 +103,11 @@ class TradingBot:
                         self.logger.error(f"❌ Error processing account {account.persona.name}: {e}")
                         continue
                 
+                # Check and update order fills with P&L (every 3rd iteration)
+                if iteration % 3 == 0:
+                    self.logger.info("\n📊 Checking order fills and updating P&L...")
+                    await self._check_and_update_order_fills()
+                
                 # Calculate loop duration and sleep
                 duration = (datetime.now() - start_time).total_seconds()
                 self.logger.info(f"⏱️  Loop iteration completed in {duration:.1f}s")
@@ -427,7 +432,52 @@ class TradingBot:
             "interval_seconds": self.interval_seconds,
             "last_market_update": self.market_cache.get("last_update"),
             "current_prices": {
-                "BTC": self.market_cache.get("BTC_price"),
-                "ETH": self.market_cache.get("ETH_price"),
+                "BTC": self.market_cache.get("btc_price"),
+                "ETH": self.market_cache.get("eth_price"),
             }
         }
+    
+    async def _check_and_update_order_fills(self):
+        """Check recent orders and update decision outcomes with P&L."""
+        try:
+            # Get all active accounts
+            for account in self.active_accounts:
+                # Get recent trades from API
+                trade_history = await self.rise_client.get_trade_history(account.address, limit=20)
+                
+                # Get recent decisions that need updating
+                decisions = self.storage.get_recent_trading_decisions(account.id, days=1)
+                
+                for decision in decisions:
+                    # Skip if already has outcome
+                    if decision.get("outcome_pnl") is not None:
+                        continue
+                    
+                    # Look for matching trade in history
+                    decision_time = datetime.fromisoformat(decision["timestamp"])
+                    trade_id = decision.get("execution_details", {}).get("trade_id")
+                    
+                    if trade_id:
+                        # Find corresponding trade and calculate P&L
+                        for api_trade in trade_history:
+                            trade_time = datetime.fromisoformat(api_trade.get("timestamp", ""))
+                            
+                            # Match by time proximity and market
+                            if abs((trade_time - decision_time).total_seconds()) < 300:  # 5 min window
+                                # Get current P&L for this trade
+                                positions = await self.rise_client.get_all_positions(account.address)
+                                for pos in positions:
+                                    if pos.get("market") == decision.get("decision", {}).get("market"):
+                                        pnl = float(pos.get("unrealizedPnl", 0))
+                                        self.storage.update_decision_outcome(
+                                            decision_id=decision["id"],
+                                            trade_id=trade_id,
+                                            pnl=pnl,
+                                            status="filled"
+                                        )
+                                        self.logger.info(f"Updated decision {decision['id']} with P&L: ${pnl:+.2f}")
+                                        break
+                                break
+                                
+        except Exception as e:
+            self.logger.error(f"Error checking order fills: {e}")

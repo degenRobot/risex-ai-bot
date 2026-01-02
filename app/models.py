@@ -37,6 +37,12 @@ class Account(BaseModel):
     signer_key: str
     persona: Optional[Persona] = None
     is_active: bool = True
+    # Registration and deposit status
+    is_registered: bool = False
+    registered_at: Optional[datetime] = None
+    has_deposited: bool = False
+    deposited_at: Optional[datetime] = None
+    deposit_amount: Optional[float] = None
     created_at: datetime = datetime.now()
 
 
@@ -44,14 +50,36 @@ class Trade(BaseModel):
     """Trade record with AI reasoning."""
     id: str
     account_id: str
-    market_id: int
+    market: str  # "BTC-USD", "ETH-USD"
+    market_id: Optional[int] = None  # RISE market ID
     side: str  # "buy" or "sell"
     size: float
     price: float
     reasoning: str  # AI explanation
     timestamp: datetime
+    # Order tracking
+    order_id: Optional[str] = None
     tx_hash: Optional[str] = None
-    status: str = "pending"
+    status: str = "pending"  # pending, submitted, filled, cancelled
+    filled_size: Optional[float] = None
+    # P&L tracking
+    pnl: Optional[float] = None
+    realized_pnl: Optional[float] = None
+    fees: Optional[float] = None
+
+
+class Position(BaseModel):
+    """Current position snapshot."""
+    account_id: str
+    market: str  # "BTC-USD", "ETH-USD"
+    side: str  # "long" or "short"
+    size: float
+    entry_price: float
+    mark_price: float
+    notional_value: float
+    unrealized_pnl: float
+    realized_pnl: float = 0.0
+    timestamp: datetime = datetime.now()
 
 
 class TradeDecision(BaseModel):

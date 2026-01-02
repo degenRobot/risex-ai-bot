@@ -146,9 +146,9 @@ async def list_profiles():
                     status=ActionStatus.PENDING
                 )
                 
-                # Calculate basic P&L (simplified)
-                trades = storage.get_trades(account.id, limit=100)
-                total_pnl = sum(t.pnl for t in trades if hasattr(t, 'pnl') and t.pnl)
+                # Calculate P&L from analytics
+                analytics = storage.get_trading_analytics(account.id)
+                total_pnl = analytics.get("total_pnl", 0.0)
                 
                 profiles.append(ProfileSummary(
                     handle=account.persona.handle,

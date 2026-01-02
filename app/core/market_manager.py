@@ -30,6 +30,8 @@ class GlobalMarketManager:
             self.update_interval = 30  # seconds
             self.logger = logging.getLogger(__name__)
             self._update_lock = asyncio.Lock()
+            self._update_task: Optional[asyncio.Task] = None
+            self._shutdown = False
             self.initialized = True
     
     async def get_latest_data(self, force_update: bool = False) -> Dict[str, any]:
@@ -160,18 +162,37 @@ class GlobalMarketManager:
     
     async def start_background_updates(self):
         """Start background task to update market data periodically."""
+        if self._update_task and not self._update_task.done():
+            self.logger.warning("Background updates already running")
+            return
+        
         async def update_loop():
-            while True:
+            while not self._shutdown:
                 try:
                     await self.get_latest_data(force_update=True)
                 except Exception as e:
                     self.logger.error(f"Background update error: {e}")
                 
-                await asyncio.sleep(self.update_interval)
+                # Use cancellable sleep
+                try:
+                    await asyncio.sleep(self.update_interval)
+                except asyncio.CancelledError:
+                    break
         
         # Start background task
-        asyncio.create_task(update_loop())
+        self._update_task = asyncio.create_task(update_loop())
         self.logger.info(f"📡 Started market data updates every {self.update_interval}s")
+    
+    async def stop_background_updates(self):
+        """Stop background market data updates gracefully."""
+        self._shutdown = True
+        if self._update_task and not self._update_task.done():
+            self._update_task.cancel()
+            try:
+                await self._update_task
+            except asyncio.CancelledError:
+                pass
+        self.logger.info("🛑 Stopped market data background updates")
     
     async def close(self):
         """Cleanup resources."""

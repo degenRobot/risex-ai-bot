@@ -142,12 +142,23 @@ async def create_profile(
                     signer_key=signer.key.hex()
                 )
                 
+                # Update registration status
+                account_obj.is_registered = True
+                account_obj.registered_at = datetime.utcnow()
+                storage.save_account(account_obj)
+                
                 # Deposit initial USDC
                 if request.initial_deposit > 0:
                     tx_hash = await client.deposit_usdc(
                         account_key=account.key.hex(),
                         amount=request.initial_deposit
                     )
+                    # Update deposit status
+                    account_obj.has_deposited = True
+                    account_obj.deposited_at = datetime.utcnow()
+                    account_obj.deposit_amount = request.initial_deposit
+                    storage.save_account(account_obj)
+                    
                     message = f"Profile created and funded with {request.initial_deposit} USDC (tx: {tx_hash})"
                 else:
                     message = "Profile created (no initial deposit)"
@@ -277,8 +288,9 @@ async def place_order(
             markets = await client.get_markets()
             market_id = None
             for market in markets:
-                if market.get("symbol") == order_request.market:
-                    market_id = market.get("id")
+                # Check base_asset_symbol field as mentioned in improvements.md
+                if market.get("base_asset_symbol") == order_request.market.split("-")[0]:
+                    market_id = market.get("market_id")
                     break
             
             if market_id is None:

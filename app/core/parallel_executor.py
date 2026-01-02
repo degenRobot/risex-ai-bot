@@ -119,6 +119,26 @@ class ParallelProfileExecutor:
             positions = await self.rise_client.get_all_positions(profile.address)
             position_count = len([p for p in positions if float(p.get("size", 0)) != 0])
             
+            # Save position snapshots for tracking
+            for pos_data in positions:
+                if float(pos_data.get("size", 0)) != 0:  # Only save open positions
+                    try:
+                        from app.models import Position
+                        position = Position(
+                            account_id=profile.id,
+                            market=pos_data.get("market", ""),
+                            side=pos_data.get("side", ""),
+                            size=float(pos_data.get("size", 0)),
+                            entry_price=float(pos_data.get("avgPrice", 0)),
+                            mark_price=float(pos_data.get("markPrice", 0)),
+                            notional_value=float(pos_data.get("notionalValue", 0)),
+                            unrealized_pnl=float(pos_data.get("unrealizedPnl", 0)),
+                            realized_pnl=float(pos_data.get("realizedPnl", 0)),
+                        )
+                        self.storage.save_position_snapshot(position)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to save position snapshot: {e}")
+            
             # Calculate P&L
             pnl_data = await self.rise_client.calculate_pnl(profile.address)
             total_pnl = pnl_data.get("total_pnl", 0.0)
