@@ -611,3 +611,21 @@ class JSONStorage:
         # Sort by timestamp and return recent ones
         account_trades.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         return account_trades[:limit]
+    
+    def get_profile_updates(self, account_id: str) -> Optional[Dict]:
+        """Get profile updates for account."""
+        updates = self._load_json(self.profile_updates_file)
+        return updates.get(account_id, {})
+    
+    def save_profile_updates(self, account_id: str, updates: Dict) -> None:
+        """Save profile updates for account."""
+        all_updates = self._load_json(self.profile_updates_file)
+        all_updates[account_id] = updates
+        self._save_json(self.profile_updates_file, all_updates)
+    
+    def save_chat_session(self, session_data: Dict) -> None:
+        """Save chat session data."""
+        sessions = self._load_json(self.chat_sessions_file)
+        session_id = session_data.get("session_id", "unknown")
+        sessions[session_id] = session_data
+        self._save_json(self.chat_sessions_file, sessions)

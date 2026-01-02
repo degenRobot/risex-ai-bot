@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     
     # OpenRouter AI
     openrouter_api_key: str = ""
-    openrouter_model: str = "anthropic/claude-3-haiku"
+    openrouter_model: str = "x-ai/grok-4.1-fast"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     
     # RISE API

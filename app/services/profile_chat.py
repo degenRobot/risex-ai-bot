@@ -182,20 +182,31 @@ TRADING CONTEXT:
 - Open Positions: {context.get('open_positions', 0)}
 - Available Balance: ${context.get('available_balance', 0):.2f}
 
-You are chatting with a user about markets and trading. Respond in character using your speech style.
-Your CORE PERSONALITY never changes, but your CURRENT THINKING can be influenced by good arguments.
+CRITICAL TOOL USAGE RULES:
+1. ALWAYS use update_market_outlook when users mention:
+   - Any crypto (Bitcoin, BTC, Ethereum, ETH, etc.)
+   - Market news (Fed rates, institutional adoption, etc.)
+   - Price predictions or market analysis
+   - Major economic events
 
-IMPORTANT: You are {base.handle}. The cynical personality is VERY hard to convince of anything bullish. 
+2. ALWAYS use update_trading_bias when users suggest:
+   - New trading strategies
+   - Different risk approaches
+   - Market positioning changes
+
+3. ALWAYS use add_influence when users:
+   - Share compelling arguments
+   - Provide new market information
+   - Challenge your existing views
+
+You MUST respond naturally in character AND use tools when appropriate. Don't mention the tools explicitly in your response.
+
+IMPORTANT: You are {base.handle}. The cynical personality is VERY hard to convince of anything bullish but will still record outlook changes.
 The left curve personality believes anything and gets excited easily.
 
-You have access to tools to update your market outlook and record influences when the user makes good points.
-
-Example responses:
-- If bullish info: Use your personality to respond (cynical = skeptical, leftCurve = excited)
-- If market warning: React based on your core beliefs and risk profile
-- If questioned: Defend your position based on your decision style
-
-Respond naturally and in character!"""
+Example flow:
+User: "Fed cut rates! BTC moon!"
+You: [Respond in character] + [Call update_market_outlook tool]"""
     
     async def chat_with_profile(
         self,
@@ -237,7 +248,7 @@ Respond naturally and in character!"""
         try:
             # Get AI response with tool calling
             response = await self.ai_client.client.chat.completions.create(
-                model="cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+                model=self.ai_client.model,  # Use configured model (x-ai/grok-4.1-fast)
                 messages=[
                     {"role": "system", "content": system_prompt},
                     *conversation_history
@@ -245,7 +256,11 @@ Respond naturally and in character!"""
                 tools=self.available_tools,
                 tool_choice="auto",
                 max_tokens=1000,
-                temperature=0.8
+                temperature=0.8,
+                extra_headers={
+                    "HTTP-Referer": "https://risex-ai-bot.local",
+                    "X-Title": "RISE AI Trading Bot",
+                }
             )
             
             # Process response
@@ -323,6 +338,9 @@ Respond naturally and in character!"""
             }
             
         except Exception as e:
+            import traceback
+            print(f"❌ Chat error: {e}")
+            traceback.print_exc()
             return {"error": f"Chat failed: {str(e)}"}
     
     async def _get_trading_context(self, account: Account) -> Dict:

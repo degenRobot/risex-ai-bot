@@ -28,7 +28,6 @@ class AIClient:
         
         # Initialize OpenAI client for OpenRouter
         if self.api_key:
-            from openai import AsyncOpenAI
             self.client = AsyncOpenAI(
                 api_key=self.api_key,
                 base_url=self.base_url
