@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from .ai_client import AIClient
+from .equity_monitor import get_equity_monitor
 from .storage import JSONStorage
 from .rise_client import RiseClient
 from .speech_styles import speechDict
@@ -181,6 +182,9 @@ TRADING CONTEXT:
 - Current P&L: ${context.get('current_pnl', 0):.2f}
 - Open Positions: {context.get('open_positions', 0)}
 - Available Balance: ${context.get('available_balance', 0):.2f}
+- On-chain Equity: ${context.get('current_equity') or 0:,.2f} {'(live)' if context.get('current_equity') is not None else '(N/A)'}
+- Equity Change (1h): {f"{context.get('equity_change_1h'):+.1f}%" if context.get('equity_change_1h') is not None else 'N/A'}
+- Equity Change (24h): {f"{context.get('equity_change_24h'):+.1f}%" if context.get('equity_change_24h') is not None else 'N/A'}
 
 CRITICAL TOOL USAGE RULES:
 1. ALWAYS use update_market_outlook when users mention:
@@ -378,6 +382,24 @@ You: [Respond in character] + [Call update_market_outlook tool]"""
         
         # Get recent trades from storage
         context["recent_trades"] = self.storage.get_recent_trades(account.id, limit=5)
+        
+        # Add equity information from monitor
+        equity_monitor = get_equity_monitor()
+        equity_data = equity_monitor.get_account_equity(account.address)
+        
+        if equity_data:
+            context["current_equity"] = equity_data["equity"]
+            context["equity_last_updated"] = equity_data["timestamp"]
+            
+            # Get equity change information
+            if account.equity_change_1h is not None:
+                context["equity_change_1h"] = account.equity_change_1h
+            if account.equity_change_24h is not None:
+                context["equity_change_24h"] = account.equity_change_24h
+        else:
+            context["current_equity"] = None
+            context["equity_change_1h"] = None
+            context["equity_change_24h"] = None
         
         return context
     

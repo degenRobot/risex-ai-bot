@@ -43,6 +43,11 @@ class Account(BaseModel):
     has_deposited: bool = False
     deposited_at: Optional[datetime] = None
     deposit_amount: Optional[float] = None
+    # Equity tracking
+    latest_equity: Optional[float] = None
+    equity_updated_at: Optional[datetime] = None
+    equity_change_1h: Optional[float] = None
+    equity_change_24h: Optional[float] = None
     created_at: datetime = datetime.now()
 
 

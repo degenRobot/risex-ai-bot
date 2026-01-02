@@ -61,10 +61,17 @@ class JSONStorage:
             raise StorageError(f"Failed to save {file_path.name}: {e}")
     
     # Account management
-    def save_account(self, account: Account) -> None:
-        """Save account to storage."""
+    def save_account(self, account_id_or_obj, account_data=None) -> None:
+        """Save account to storage. Can accept Account object or (account_id, account_dict)."""
         accounts = self._load_json(self.accounts_file)
-        accounts[account.id] = account.model_dump()
+        
+        if isinstance(account_id_or_obj, Account):
+            # Account object provided
+            accounts[account_id_or_obj.id] = account_id_or_obj.model_dump()
+        else:
+            # account_id and dict provided
+            accounts[account_id_or_obj] = account_data
+            
         self._save_json(self.accounts_file, accounts)
     
     def get_account(self, account_id: str) -> Optional[Account]:
@@ -79,6 +86,10 @@ class JSONStorage:
             return Account(**account_data)
         except Exception as e:
             raise StorageError(f"Failed to load account {account_id}: {e}")
+    
+    def get_all_accounts(self) -> Dict[str, Dict]:
+        """Get all accounts as raw dict data."""
+        return self._load_json(self.accounts_file)
     
     def list_accounts(self) -> List[Account]:
         """List all accounts."""
@@ -718,3 +729,27 @@ class JSONStorage:
                     decisions[account_id][i] = decision
                     self._save_json(self.trading_decisions_file, decisions)
                     return
+    
+    # Equity snapshot management
+    def save_equity_snapshot(self, account_id: str, snapshot: Dict, limit: int = 200) -> None:
+        """Save an equity snapshot for an account with history limit."""
+        equity_file = self.data_dir / "equity_snapshots.json"
+        snapshots = self._load_json(equity_file)
+        
+        if account_id not in snapshots:
+            snapshots[account_id] = []
+        
+        # Add new snapshot
+        snapshots[account_id].append(snapshot)
+        
+        # Trim to limit (keep most recent)
+        if len(snapshots[account_id]) > limit:
+            snapshots[account_id] = snapshots[account_id][-limit:]
+        
+        self._save_json(equity_file, snapshots)
+    
+    def get_equity_snapshots(self, account_id: str) -> List[Dict]:
+        """Get equity snapshots for an account."""
+        equity_file = self.data_dir / "equity_snapshots.json"
+        snapshots = self._load_json(equity_file)
+        return snapshots.get(account_id, [])
