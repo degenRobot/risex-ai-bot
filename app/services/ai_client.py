@@ -4,6 +4,7 @@ import json
 from typing import Dict, List, Optional
 
 import httpx
+from openai import AsyncOpenAI
 
 from ..config import settings
 from ..models import Persona, TradeDecision, TradingStyle, TradingDecisionLog
@@ -24,6 +25,16 @@ class AIClient:
         self.api_key = settings.openrouter_api_key
         self.model = settings.openrouter_model
         self.base_url = settings.openrouter_base_url
+        
+        # Initialize OpenAI client for OpenRouter
+        if self.api_key:
+            from openai import AsyncOpenAI
+            self.client = AsyncOpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url
+            )
+        else:
+            self.client = None
     
     async def _chat_completion(self, messages: List[Dict], json_mode: bool = False) -> str:
         """Send chat completion request to OpenRouter."""

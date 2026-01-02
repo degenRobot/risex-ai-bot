@@ -5,21 +5,34 @@ An AI-powered trading bot for RISE testnet that creates unique trading personas 
 ## Overview
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Social Posts  │────▶│  AI Persona     │────▶│   RISE API      │
-│   & Profile     │     │  (OpenRouter)   │     │   Trading       │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-   Profile Analysis      Trade Decisions         Execute Trades
+┌─────────────────────────────────────────────────────────────────────┐
+│                          AI Trader Profile                           │
+├─────────────────────┬───────────────────────────────────────────────┤
+│  Immutable Base     │           Mutable Current State               │
+│  ├─ Personality     │  ├─ Shared Thought Process                    │
+│  ├─ Core Beliefs    │  ├─ Market Outlooks                          │
+│  ├─ Speech Style    │  ├─ Recent Influences                        │
+│  └─ Risk Profile    │  └─ Trading Decisions                        │
+└─────────────────────┴───────────────────────────────────────────────┘
+                ↑                           ↑
+                │                           │
+    ┌───────────┴────────┐       ┌─────────┴──────────┐
+    │   Chat Interface   │       │  Trading Engine    │
+    │  - User messages   │       │  - Market data     │
+    │  - AI responses    │       │  - Position calc   │
+    │  - Tool calls      │       │  - Order placement │
+    └────────────────────┘       └────────────────────┘
 ```
 
 **Key Features:**
-- AI-generated trading personas with unique personalities
+- **Immutable Base Personas**: Core personality traits that never change
+- **Mutable Thought Process**: Shared state that evolves through chat and trading
+- **Chat with AI Traders**: Influence trading decisions through conversations
+- **Async Architecture**: Clean separation of chat and trading with shared state
 - Gasless trading using RISE's gasless architecture
 - Automatic USDC faucet integration for testnet
 - Real-time market analysis and decision making
-- Simple REST API for bot management
+- REST API for bot management and profile chat
 
 ## Quick Start
 
@@ -62,6 +75,9 @@ poetry run python tests/test_full_flow.py
 # Test AI trading logic
 poetry run python tests/test_ai_trading.py
 
+# Test profile chat system (NEW)
+poetry run python tests/test_profile_chat.py
+
 # Test deposits
 poetry run python tests/test_deposit.py
 ```
@@ -78,36 +94,37 @@ risex-ai-bot/
 │   │   └── parallel_executor.py  # Parallel profile executor
 │   ├── services/
 │   │   ├── rise_client.py        # RISE API client (gasless trading) ✅
-│   │   ├── ai_client.py          # OpenRouter AI client
+│   │   ├── ai_client.py          # OpenRouter AI client with tool support
 │   │   ├── ai_tools.py           # AI tool definitions
+│   │   ├── profile_chat.py       # Chat with AI traders 💬
+│   │   ├── thought_process.py    # Shared thought process manager 🧠
+│   │   ├── prompt_builders.py    # Consistent prompt generation 📝
+│   │   ├── speech_styles.py      # Personality speech patterns 🗣️
 │   │   ├── mock_social.py        # Mock social media profiles
 │   │   └── storage.py            # JSON storage
 │   ├── utils/
-│   │   └── profile_generator.py  # Profile creation helper (NEW) 🎯
-│   ├── models/
-│   │   ├── __init__.py           # Core models
-│   │   └── pending_actions.py    # Pending action models
+│   │   └── profile_generator.py  # Profile creation helper 🎯
 │   ├── api/                      # FastAPI endpoints
+│   ├── trader_profiles.py        # Trader personality definitions 👥
 │   ├── config.py                 # Configuration management
 │   └── models.py                 # Pydantic models
 ├── scripts/                      # Production scripts
 │   ├── run_trading_bot.py        # Original trading bot runner
-│   └── run_enhanced_bot.py       # Enhanced parallel bot (NEW) 🚀
+│   └── run_enhanced_bot.py       # Enhanced parallel bot 🚀
 ├── tests/                        # Comprehensive test suite
-│   ├── test_enhanced_architecture.py # Test new architecture (NEW) ⚡
+│   ├── test_chat_influence.py    # Test chat → trading influence
 │   ├── test_enhanced_system.py   # Test decision logging & history
-│   ├── test_automated_trading.py # Complete system test (recommended)
-│   ├── test_complete_flow.py     # RISE API integration test
-│   ├── test_ai_persona.py        # AI decision making test
-│   ├── test_mock_profiles.py     # Mock social profiles test
+│   ├── test_automated_trading.py # Complete system test
 │   └── test_*.py                 # Component tests
 ├── data/                         # Persistent storage & trading logs
-│   ├── accounts.json            # Trading accounts
-│   ├── trading_decisions.json   # Decision logs with reasoning
-│   ├── trading_sessions.json    # Trading sessions and outcomes
-│   └── pending_actions.json     # Pending conditional actions (NEW) 🎯
-├── ARCHITECTURE_DESIGN.md       # Enhanced architecture docs (NEW) 📚
-└── pyproject.toml               # Poetry configuration
+│   ├── accounts.json             # Trading accounts
+│   ├── thought_processes.json    # Shared thought process entries 🧠
+│   ├── chat_sessions.json        # Chat conversation history
+│   ├── trading_decisions.json    # Decision logs with reasoning
+│   ├── trading_sessions.json     # Trading sessions and outcomes
+│   └── pending_actions.json      # Pending conditional actions
+├── ARCHITECTURE.md               # System architecture & async flow 📚
+└── pyproject.toml                # Poetry configuration
 ```
 
 ## Core Components
@@ -193,6 +210,79 @@ async with AccountManager() as manager:
     status = await manager.check_account_status(account.id)
 ```
 
+### Thought Process Manager (`app/services/thought_process.py`)
+
+Manages shared thought process that evolves through chat and trading:
+
+```python
+from app.services.thought_process import ThoughtProcessManager
+
+manager = ThoughtProcessManager()
+
+# Add chat influence
+await manager.add_entry(
+    account_id="trader-123",
+    entry_type="chat_influence",
+    source="user_message",
+    content="User shared Fed rate cut news",
+    impact="Reconsidering bearish BTC stance",
+    confidence=0.7
+)
+
+# Add trading decision
+await manager.add_entry(
+    account_id="trader-123",
+    entry_type="trading_decision",
+    source="market_analysis",
+    content="Opened BTC long based on Fed news",
+    impact="Committed to bullish thesis",
+    details={"action": "buy", "size": 0.1, "price": 95000}
+)
+
+# Get thoughts for trading context
+thoughts = await manager.summarize_thoughts(
+    account_id="trader-123",
+    for_purpose="trading_decision"
+)
+```
+
+### Profile Chat (`app/services/profile_chat.py`)
+
+Chat with AI traders using their unique personalities:
+
+```python
+from app.services.profile_chat import ProfileChatService
+
+chat = ProfileChatService()
+
+# Chat with trader
+result = await chat.chat_with_profile(
+    account_id="trader-123",
+    user_message="Fed is cutting rates, BTC to moon!",
+    chat_history=""  # or previous chat JSON
+)
+
+print(result['response'])  # AI's in-character response
+print(result['profileUpdates'])  # How their thinking changed
+```
+
+### Trader Profiles (`app/trader_profiles.py`)
+
+Pre-defined personalities with immutable base traits:
+
+- **cynicalUser**: Extremely skeptical, uses "financialAdvisor" speech
+- **leftCurve**: Easily influenced, uses "smol" (WassieSpeak) speech  
+- **midwit**: Overconfident analyst, uses crypto slang
+
+```python
+from app.trader_profiles import create_trader_profile
+
+# Create a cynical trader
+profile = create_trader_profile("cynical", account_id="123")
+print(profile.base_persona.core_beliefs)
+# {'crypto': 'All ponzis go to zero eventually', ...}
+```
+
 ## Testing
 
 ### Automated Trading System Test
@@ -250,6 +340,61 @@ poetry run python test_rise_integration.py
 
 # End-to-end pipeline test
 poetry run python test_end_to_end.py
+```
+
+## Chat & Thought Process System
+
+### How It Works
+
+1. **Chat influences trading**: Users can chat with AI traders to influence their market outlook
+2. **Shared thought process**: Both chat and trading update a shared thought log
+3. **Async architecture**: Chat and trading run independently but share state
+4. **Tool-based updates**: AI uses tools to update their thinking
+
+### Example Flow
+
+```python
+# 1. User chats with trader
+POST /api/profiles/{account_id}/chat
+{
+    "message": "Fed is cutting rates tomorrow, BTC will pump!",
+    "chatHistory": ""
+}
+
+# 2. AI responds and updates thinking
+Response: "Hmm, Fed rate cuts could be bullish..."
+Tool Call: update_thought_process(
+    thought_type="opinion_change",
+    content="Considering bullish BTC stance due to Fed policy",
+    impact="May look for long entries",
+    confidence=0.7
+)
+
+# 3. Trading engine reads thoughts (5 min later)
+thoughts = await thought_manager.get_trading_influences(account_id)
+# Sees recent bullish influence from chat
+
+# 4. Makes influenced decision
+Decision: Buy 0.1 BTC at $95k
+Tool Call: update_thought_process(
+    content="Executed BTC long based on Fed news from chat",
+    impact="Testing thesis about macro influences"
+)
+```
+
+### API Endpoints
+
+```bash
+# Chat with AI trader
+POST /api/profiles/{account_id}/chat
+POST /api/v2/profiles/{account_id}/chat  # Enhanced version
+
+# Get profile summary with current thinking  
+GET /api/profiles/{account_id}/summary
+GET /api/v2/profiles/{account_id}/summary
+
+# Get trading context
+GET /api/profiles/{account_id}/context
 ```
 
 ## Automated Trading
@@ -313,7 +458,25 @@ poetry run python tests/test_enhanced_architecture.py
 4. Makes AI trading decision based on personality
 5. Executes trades if confidence > 60%
 
-**5 AI Trader Personalities:**
+**AI Trader Personalities:**
+
+**Immutable Base Personas** (3 main types):
+- **cynicalUser** - Extremely cynical, thinks everything goes to 0
+  - Speech: "financialAdvisor" (calls things ponzis, says NGMI/HFSP)
+  - Very hard to convince of anything bullish
+  - Conservative risk profile
+  
+- **leftCurve** - Easily persuaded, makes terrible decisions
+  - Speech: "smol" (wassie speak - "henlo fren", "numba go up")
+  - Believes any exciting rumor, FOMOs into everything
+  - Degen risk profile
+  
+- **midwit** - Overconfident technical analyst
+  - Speech: "ct" (crypto slang)
+  - Overanalyzes with too many indicators
+  - Moderate risk profile
+
+**Legacy Personas** (from social profiles):
 - **crypto_degen** - Aggressive YOLO trader
 - **btc_hodler** - Conservative Bitcoin maximalist  
 - **trend_master** - Technical momentum trader
@@ -493,6 +656,10 @@ We have successfully implemented and tested all core features:
 3. **Profile Generation** - Automated account/signer key creation and setup
 4. **AI Trading Logic** - Market analysis and decision making
 5. **Gasless Trading** - Working with proper signer registration
+6. **Chat System** - Users can influence AI traders through natural conversation
+7. **Thought Process** - Shared state that evolves from both chat and trading
+8. **Immutable Personas** - Base personalities that stay consistent
+9. **Tool Calling** - AI updates thinking through structured tool calls
 
 ### 🎯 Key Discoveries
 

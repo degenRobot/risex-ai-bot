@@ -28,6 +28,8 @@ class JSONStorage:
         
         # Storage file paths
         self.accounts_file = self.data_dir / "accounts.json"
+        self.chat_sessions_file = self.data_dir / "chat_sessions.json"
+        self.profile_updates_file = self.data_dir / "profile_updates.json"
         self.trades_file = self.data_dir / "trades.json"
         self.personas_file = self.data_dir / "personas.json"
         self.decisions_file = self.data_dir / "trading_decisions.json"
@@ -496,3 +498,116 @@ class JSONStorage:
         
         self._save_json(self.pending_actions_file, actions)
         return removed_count
+    
+    # Chat and Profile Update Methods
+    
+    def save_chat_session(self, session_data: Dict) -> bool:
+        """Save chat session data."""
+        try:
+            sessions = self._load_json(self.chat_sessions_file)
+            session_id = session_data["session_id"]
+            sessions[session_id] = session_data
+            self._save_json(self.chat_sessions_file, sessions)
+            return True
+        except Exception:
+            return False
+    
+    def get_chat_session(self, session_id: str) -> Optional[Dict]:
+        """Get chat session by ID."""
+        sessions = self._load_json(self.chat_sessions_file)
+        return sessions.get(session_id)
+    
+    def update_profile_outlook(self, account_id: str, outlook_data: Dict) -> bool:
+        """Update profile's market outlook."""
+        try:
+            updates = self._load_json(self.profile_updates_file)
+            
+            if account_id not in updates:
+                updates[account_id] = {"outlooks": [], "biases": [], "traits": []}
+            
+            updates[account_id]["outlooks"].append(outlook_data)
+            # Keep only last 20 outlooks
+            updates[account_id]["outlooks"] = updates[account_id]["outlooks"][-20:]
+            
+            self._save_json(self.profile_updates_file, updates)
+            return True
+        except Exception:
+            return False
+    
+    def update_profile_bias(self, account_id: str, bias_data: Dict) -> bool:
+        """Update profile's trading bias."""
+        try:
+            updates = self._load_json(self.profile_updates_file)
+            
+            if account_id not in updates:
+                updates[account_id] = {"outlooks": [], "biases": [], "traits": []}
+            
+            updates[account_id]["biases"].append(bias_data)
+            # Keep only last 10 biases
+            updates[account_id]["biases"] = updates[account_id]["biases"][-10:]
+            
+            self._save_json(self.profile_updates_file, updates)
+            return True
+        except Exception:
+            return False
+    
+    def add_personality_trait(self, account_id: str, trait_data: Dict) -> bool:
+        """Add personality trait update."""
+        try:
+            updates = self._load_json(self.profile_updates_file)
+            
+            if account_id not in updates:
+                updates[account_id] = {"outlooks": [], "biases": [], "traits": []}
+            
+            updates[account_id]["traits"].append(trait_data)
+            # Keep only last 15 traits
+            updates[account_id]["traits"] = updates[account_id]["traits"][-15:]
+            
+            self._save_json(self.profile_updates_file, updates)
+            return True
+        except Exception:
+            return False
+    
+    def get_profile_outlook(self, account_id: str) -> List[Dict]:
+        """Get profile's market outlook updates."""
+        updates = self._load_json(self.profile_updates_file)
+        profile_updates = updates.get(account_id, {})
+        return profile_updates.get("outlooks", [])
+    
+    def get_profile_bias(self, account_id: str) -> List[Dict]:
+        """Get profile's trading bias updates."""
+        updates = self._load_json(self.profile_updates_file)
+        profile_updates = updates.get(account_id, {})
+        return profile_updates.get("biases", [])
+    
+    def get_personality_traits(self, account_id: str) -> List[Dict]:
+        """Get personality trait updates."""
+        updates = self._load_json(self.profile_updates_file)
+        profile_updates = updates.get(account_id, {})
+        return profile_updates.get("traits", [])
+    
+    def get_last_chat_time(self, account_id: str) -> Optional[str]:
+        """Get last chat time for account."""
+        sessions = self._load_json(self.chat_sessions_file)
+        
+        last_time = None
+        for session in sessions.values():
+            if session.get("account_id") == account_id:
+                session_time = session.get("last_updated")
+                if not last_time or (session_time and session_time > last_time):
+                    last_time = session_time
+        
+        return last_time
+    
+    def get_recent_trades(self, account_id: str, limit: int = 5) -> List[Dict]:
+        """Get recent trades for account."""
+        trades = self._load_json(self.trades_file)
+        account_trades = []
+        
+        for trade_data in trades.values():
+            if trade_data.get("account_id") == account_id:
+                account_trades.append(trade_data)
+        
+        # Sort by timestamp and return recent ones
+        account_trades.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        return account_trades[:limit]

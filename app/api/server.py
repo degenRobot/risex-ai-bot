@@ -7,6 +7,7 @@ from typing import List, Optional, Dict, Any
 import logging
 
 from ..services.storage import JSONStorage
+from ..services.profile_chat import ProfileChatService
 from ..models import Account
 from ..pending_actions import ActionStatus
 
@@ -33,6 +34,9 @@ app.add_middleware(
 # Storage instance
 storage = JSONStorage()
 
+# Chat service instance
+chat_service = ProfileChatService()
+
 # Active trading status (managed by main bot)
 active_traders = {}
 
@@ -46,6 +50,23 @@ class ProfileSummary(BaseModel):
     total_pnl: float
     position_count: int
     pending_actions: int
+
+
+class ChatRequest(BaseModel):
+    """Chat request model."""
+    message: str
+    chatHistory: Optional[str] = ""
+    sessionId: Optional[str] = None
+
+
+class ChatResponse(BaseModel):
+    """Chat response model."""
+    response: str
+    chatHistory: str
+    profileUpdates: List[str] = []
+    sessionId: str
+    context: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
 
 
 class ProfileDetail(BaseModel):
@@ -389,8 +410,158 @@ async def cancel_action(handle: str, action_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/profiles/{account_id}/chat", response_model=ChatResponse)
+async def chat_with_profile(account_id: str, chat_request: ChatRequest):
+    """Chat with a specific AI trading profile.
+    
+    This endpoint allows users to have conversations with AI traders.
+    The AI can update its market outlook, trading bias, and personality
+    based on information shared in the conversation.
+    
+    Example conversation:
+    - User: "Fed is going to drop rates, BTC will pump!"
+    - AI: "That's bullish! I should reconsider my short position..."
+    """
+    try:
+        result = await chat_service.chat_with_profile(
+            account_id=account_id,
+            user_message=chat_request.message,
+            chat_history=chat_request.chatHistory,
+            user_session_id=chat_request.sessionId
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+        
+        return ChatResponse(
+            response=result["response"],
+            chatHistory=result["chatHistory"],
+            profileUpdates=result.get("profileUpdates", []),
+            sessionId=result["sessionId"],
+            context=result.get("context")
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in chat with profile {account_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
+
+
+@app.get("/api/profiles/{account_id}/summary")
+async def get_profile_summary(account_id: str):
+    """Get detailed profile summary including recent chat updates.
+    
+    Returns current market outlook, trading bias, and personality updates
+    that have been influenced by recent conversations.
+    """
+    try:
+        summary = await chat_service.get_profile_summary(account_id)
+        
+        if "error" in summary:
+            raise HTTPException(status_code=404, detail=summary["error"])
+        
+        return summary
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting profile summary {account_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/profiles/{account_id}/context")
+async def get_profile_context(account_id: str):
+    """Get current trading context for a profile.
+    
+    Returns current positions, P&L, recent trades, and market data
+    that the AI is using for decision making.
+    """
+    try:
+        # Get the account
+        account = storage.get_account(account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        # Get trading context
+        context = await chat_service.get_profile_context(account)
+        
+        return {
+            "profile_id": account_id,
+            "profile_name": account.persona.name if account.persona else account.address[:8],
+            "trading_context": context,
+            "timestamp": context.get("timestamp")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting profile context {account_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Set active traders reference for bot integration
 def set_active_traders(traders_dict):
     """Set reference to active traders from main bot."""
     global active_traders
     active_traders = traders_dict
+
+
+# V2 Chat endpoints with enhanced personalities
+@app.post("/api/v2/profiles/{account_id}/chat", response_model=ChatResponse)
+async def chat_with_profile_v2(account_id: str, chat_request: ChatRequest):
+    """Chat with AI trader using enhanced personality system with immutable personas."""
+    try:
+        # Check if account exists
+        account = storage.get_account(account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        # Use chat service with enhanced profiles
+        result = await chat_service.chat_with_profile(
+            account_id=account_id,
+            user_message=chat_request.message,
+            chat_history=chat_request.chatHistory,
+            user_session_id=chat_request.sessionId
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=result["error"])
+        
+        return ChatResponse(
+            response=result["response"],
+            chatHistory=result["chatHistory"],
+            profileUpdates=result.get("profileUpdates", []),
+            sessionId=result["sessionId"],
+            context=result.get("context", {})
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in v2 chat with profile {account_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v2/profiles/{account_id}/summary")
+async def get_profile_summary_v2(account_id: str):
+    """Get enhanced profile summary with immutable base and mutable thinking."""
+    try:
+        # Check if account exists
+        account = storage.get_account(account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        # Get summary from chat service
+        summary = await chat_service.get_profile_summary(account_id)
+        
+        if "error" in summary:
+            raise HTTPException(status_code=404, detail=summary["error"])
+        
+        return summary
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting v2 profile summary {account_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

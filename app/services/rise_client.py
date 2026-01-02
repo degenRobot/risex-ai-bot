@@ -185,17 +185,15 @@ class RiseClient:
     async def get_all_positions(self, account: str) -> List[Dict[str, Any]]:
         """Get all positions for account."""
         response = await self._request(
-            "GET", "/v1/account/positions",
-            params={"account": account}
+            "GET", f"/v1/accounts/{account}/positions"
         )
-        return response.get("data", {}).get("positions", [])
+        return response.get("data", [])
     
     async def get_balance(self, account: str) -> Dict[str, Any]:
         """Get account balance."""
         # RISE uses cross-margin balance, not token balance
         response = await self._request(
-            "GET", "/v1/account",
-            params={"account": account}
+            "GET", f"/v1/accounts/{account}"
         )
         return response.get("data", {})
     
@@ -236,6 +234,109 @@ class RiseClient:
             return []
         
         return data
+    
+    async def place_market_order(
+        self,
+        account_key: str,
+        signer_key: str,
+        market_id: int,
+        size: float,
+        side: str,
+        reduce_only: bool = False,
+    ) -> Dict[str, Any]:
+        """Simplified market order placement.
+        
+        Note: RISE testnet requires limit orders with price=0 for market-like behavior.
+        Using order_type="limit" with price=0 and TIF=3 (IOC) achieves market order execution.
+        
+        Args:
+            account_key: Main account private key
+            signer_key: Signer private key
+            market_id: Market ID (1=BTC, 2=ETH, etc)
+            size: Order size (e.g., 0.01 for 0.01 BTC)
+            side: "buy" or "sell"
+            reduce_only: Close position only
+            
+        Returns:
+            Order response
+        """
+        return await self.place_order(
+            account_key=account_key,
+            signer_key=signer_key,
+            market_id=market_id,
+            size=size,
+            price=0,  # Price is 0 for market-like behavior
+            side=side,
+            order_type="limit",  # Use limit order with price=0 (works on testnet)
+            tif=3,  # IOC for immediate execution
+            reduce_only=reduce_only,
+            max_retries=3  # Enable retries for RPC issues
+        )
+    
+    async def close_position(
+        self,
+        account_key: str,
+        signer_key: str,
+        market_id: int,
+    ) -> Optional[Dict[str, Any]]:
+        """Close an entire position using market order.
+        
+        Args:
+            account_key: Main account private key
+            signer_key: Signer private key
+            market_id: Market ID to close
+            
+        Returns:
+            Order response or None if no position
+        """
+        account = EthAccount.from_key(account_key)
+        
+        # Get current position
+        positions = await self.get_all_positions(account.address)
+        position = next((p for p in positions if p.get('market_id') == market_id), None)
+        
+        if not position:
+            return None
+            
+        # Get position size and side
+        size = abs(float(position.get('size', 0)))
+        is_long = float(position.get('size', 0)) > 0
+        
+        # Place opposite market order to close
+        close_side = "sell" if is_long else "buy"
+        
+        return await self.place_market_order(
+            account_key=account_key,
+            signer_key=signer_key,
+            market_id=market_id,
+            size=size,
+            side=close_side,
+            reduce_only=True
+        )
+    
+    async def get_market_prices(self) -> Dict[str, float]:
+        """Get current market prices for BTC and ETH.
+        
+        Returns:
+            Dict with 'BTC' and 'ETH' prices
+        """
+        prices = {}
+        
+        try:
+            # Get BTC price (market_id=1)
+            btc_price = await self.get_latest_price(1)
+            if btc_price:
+                prices['BTC'] = btc_price
+                
+            # Get ETH price (market_id=2)
+            eth_price = await self.get_latest_price(2)
+            if eth_price:
+                prices['ETH'] = eth_price
+                
+        except Exception:
+            pass
+            
+        return prices
     
     async def calculate_pnl(self, account: str) -> Dict[str, float]:
         """Calculate P&L for all positions."""
@@ -351,6 +452,7 @@ class RiseClient:
         tif: int = 3,  # Default to IOC (3) which works on testnet
         post_only: bool = False,
         reduce_only: bool = False,
+        max_retries: int = 3,  # Retry for RPC errors
     ) -> Dict[str, Any]:
         """Place a gasless order.
         
@@ -378,9 +480,16 @@ class RiseClient:
         # Get domain for signing
         domain = await self.get_eip712_domain()
         
-        # Convert to raw amounts (wei)
+        # Convert to raw amounts
         size_raw = int(size * 1e18)
-        price_raw = int(price * 1e18)
+        
+        # For market orders, price should be 0
+        # For limit orders, price needs proper precision
+        if order_type.lower() == "market":
+            price_raw = 0
+        else:
+            # Price might need different precision handling
+            price_raw = int(price * 1e18) if price > 0 else 0
         
         # Convert parameters
         side_int = 0 if side.lower() == "buy" else 1
@@ -440,31 +549,71 @@ class RiseClient:
         
         signature = self._sign_typed_data(verify_sig_data, signer_key)
         
-        # Submit order
-        return await self._request(
-            "POST", "/v1/orders/place",
-            json={
-                "order_params": {
-                    "market_id": str(market_id),
-                    "size": str(size_raw),
-                    "price": str(price_raw),
-                    "side": side_int,
-                    "order_type": order_type_int,
-                    "tif": tif,
-                    "post_only": post_only,
-                    "reduce_only": reduce_only,
-                    "stp_mode": 0,  # Cancel taker
-                    "expiry": expiry,
-                },
-                "permit_params": {
-                    "account": account.address,
-                    "signer": signer.address,
-                    "deadline": str(deadline),
-                    "signature": signature,
-                    "nonce": str(nonce),
-                }
+        # Submit order with retry logic for RPC errors
+        order_request = {
+            "order_params": {
+                "market_id": str(market_id),
+                "size": str(size_raw),
+                "price": str(price_raw),
+                "side": side_int,
+                "order_type": order_type_int,
+                "tif": tif,
+                "post_only": post_only,
+                "reduce_only": reduce_only,
+                "stp_mode": 0,  # Cancel taker
+                "expiry": expiry,
+            },
+            "permit_params": {
+                "account": account.address,
+                "signer": signer.address,
+                "deadline": str(deadline),
+                "signature": signature,
+                "nonce": str(nonce),
             }
-        )
+        }
+        
+        # Retry logic for RPC node issues
+        for attempt in range(max_retries):
+            try:
+                return await self._request(
+                    "POST", "/v1/orders/place",
+                    json=order_request
+                )
+            except RiseAPIError as e:
+                # Check if this is the specific RPC error that should be retried
+                error_msg = str(e).lower()
+                if "missing nonce" in error_msg and "insufficient funds" in error_msg:
+                    # This is likely an RPC node issue, not an actual problem
+                    if attempt < max_retries - 1:
+                        print(f"RPC node error detected (attempt {attempt + 1}/{max_retries}). Retrying...")
+                        await asyncio.sleep(1 * (attempt + 1))  # Exponential backoff
+                        
+                        # Generate new nonce and deadline for retry
+                        nonce = self._create_client_nonce(account.address)
+                        deadline = int(time.time()) + 300
+                        
+                        # Re-sign with new nonce and deadline
+                        verify_sig_data["message"]["nonce"] = nonce
+                        verify_sig_data["message"]["deadline"] = deadline
+                        signature = self._sign_typed_data(verify_sig_data, signer_key)
+                        
+                        # Update request
+                        order_request["permit_params"]["deadline"] = str(deadline)
+                        order_request["permit_params"]["signature"] = signature
+                        order_request["permit_params"]["nonce"] = str(nonce)
+                        
+                        continue
+                    else:
+                        # Final attempt failed
+                        raise RiseAPIError(
+                            f"Order placement failed after {max_retries} attempts. "
+                            "This appears to be an RPC node issue. The order parameters are correct. "
+                            f"Original error: {e}",
+                            e.status_code,
+                            e.details
+                        )
+                # For other errors, don't retry
+                raise
     
     def _sign_typed_data(self, typed_data: Dict, private_key: str) -> str:
         """Sign EIP-712 typed data."""
