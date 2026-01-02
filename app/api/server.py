@@ -9,6 +9,7 @@ import logging
 
 from ..services.storage import JSONStorage
 from ..services.profile_chat import ProfileChatService
+from ..services.equity_monitor import get_equity_monitor
 from ..models import Account
 from ..pending_actions import ActionStatus
 from .profile_manager import router as admin_router
@@ -75,6 +76,8 @@ class ProfileSummary(BaseModel):
     trading_style: str
     is_trading: bool
     total_pnl: float
+    net_pnl: float  # Current equity - initial deposit
+    current_equity: Optional[float]  # Current account value
     position_count: int
     pending_actions: int
 
@@ -168,10 +171,20 @@ async def list_profiles(
     """List all trading profiles with pagination."""
     try:
         accounts = storage.list_accounts()
+        equity_monitor = get_equity_monitor()
         profiles = []
+        seen_handles = set()  # Track seen handles for deduplication
+        
+        # Default initial deposit amount (all profiles start with this)
+        DEFAULT_INITIAL_DEPOSIT = 1000.0
         
         for account in accounts:
             if account.persona:
+                # Skip if we've already seen this handle (deduplication)
+                if account.persona.handle in seen_handles:
+                    continue
+                seen_handles.add(account.persona.handle)
+                
                 # Get trading status from external tracking
                 is_trading = account.id in active_traders
                 
@@ -182,17 +195,31 @@ async def list_profiles(
                     status=ActionStatus.PENDING
                 )
                 
-                # Calculate P&L from analytics
+                # Get current equity from on-chain
+                current_equity = None
+                net_pnl = 0.0
+                try:
+                    current_equity = await equity_monitor.fetch_equity(account.address)
+                    if current_equity is not None:
+                        # Use the actual deposit amount if available, otherwise use default
+                        initial_deposit = getattr(account, 'deposit_amount', DEFAULT_INITIAL_DEPOSIT) or DEFAULT_INITIAL_DEPOSIT
+                        net_pnl = current_equity - initial_deposit
+                except Exception as e:
+                    logger.warning(f"Could not fetch equity for {account.address}: {e}")
+                
+                # Calculate P&L from analytics (for backward compatibility)
                 analytics = storage.get_trading_analytics(account.id)
                 total_pnl = analytics.get("total_pnl", 0.0)
                 
                 profiles.append(ProfileSummary(
-                    account_id=account.id,  # Include account_id
+                    account_id=account.id,
                     handle=account.persona.handle,
                     name=account.persona.name,
                     trading_style=account.persona.trading_style.value,
                     is_trading=is_trading,
                     total_pnl=total_pnl,
+                    net_pnl=net_pnl,
+                    current_equity=current_equity,
                     position_count=len(positions),
                     pending_actions=len(pending_actions)
                 ))
@@ -220,6 +247,7 @@ async def list_profiles(
 async def list_all_profiles():
     """List all trading profiles without pagination (backward compatibility)."""
     try:
+        # Call paginated endpoint with high limit
         response = await list_profiles(page=1, limit=1000)
         return response.profiles
     except Exception as e:

@@ -40,15 +40,47 @@ GET /health
 }
 ```
 
-### List Profiles
+### List Profiles (Paginated)
 ```bash
-GET /api/profiles
+GET /api/profiles?page=1&limit=20
+```
+
+**Query Parameters:**
+- `page`: Page number (default: 1, min: 1)
+- `limit`: Items per page (default: 20, min: 1, max: 100)
+
+**Response:**
+```json
+{
+  "profiles": [
+    {
+      "account_id": "7f673612-83ad-4e34-a323-1d77126440a8",
+      "handle": "crypto_degen",
+      "name": "The Crypto Degen",
+      "trading_style": "aggressive",
+      "is_trading": false,
+      "total_pnl": 0,
+      "position_count": 0,
+      "pending_actions": 0
+    }
+  ],
+  "total": 15,
+  "page": 1,
+  "limit": 20,
+  "has_more": false
+}
+```
+
+### List All Profiles (No Pagination)
+```bash
+GET /api/profiles/all
 ```
 
 **Response:**
 ```json
 [
   {
+    "account_id": "7f673612-83ad-4e34-a323-1d77126440a8",
     "handle": "crypto_degen",
     "name": "The Crypto Degen",
     "trading_style": "aggressive",
@@ -71,6 +103,7 @@ GET /api/profiles/{handle}
 **Response:**
 ```json
 {
+  "account_id": "7f673612-83ad-4e34-a323-1d77126440a8",
   "handle": "crypto_degen",
   "name": "The Crypto Degen",
   "bio": "Aggressive day trader with a YOLO mentality",
@@ -403,8 +436,27 @@ POST /api/profiles/{handle}/stop
 
 ## Notes
 
-1. **Account ID vs Handle**: Most endpoints use account UUID, profile detail endpoint uses handle
-2. **Chat History**: Maintained per session, use same sessionId to continue conversation
-3. **Profile Updates**: Chat can influence trader's market outlook and bias
-4. **RISE Integration**: Balance/position endpoints may return 404 if account not whitelisted
-5. **Order Placement**: Requires account to have USDC balance and be whitelisted on RISE
+1. **Account ID vs Handle**: 
+   - List and detail endpoints now include `account_id` in responses
+   - Chat/context/summary endpoints require `account_id` (UUID)
+   - Profile detail endpoint uses `handle` (e.g., "crypto_degen")
+   - Frontend no longer needs to maintain handle→account_id mapping
+   
+2. **Pagination**: 
+   - `/api/profiles` supports pagination with `page` and `limit` parameters
+   - Use `/api/profiles/all` for backward compatibility (no pagination)
+   - Default page size is 20, maximum is 100
+
+3. **Chat History**: Maintained per session, use same sessionId to continue conversation
+
+4. **Profile Updates**: Chat can influence trader's market outlook and bias
+
+5. **RISE Integration**: 
+   - Balance/position endpoints may return 404 if account not whitelisted
+   - Empty positions array is normal when RISE API is unavailable
+
+6. **Order Placement**: Requires account to have USDC balance and be whitelisted on RISE
+
+7. **Error Handling**: 
+   - API automatically repairs corrupted JSON data files
+   - Graceful degradation when external services are unavailable

@@ -487,7 +487,7 @@ You: [Respond in character] + [Call update_market_outlook tool]"""
                 "core_personality": profile.base_persona.core_personality,
                 "risk_profile": profile.base_persona.risk_profile.value,
                 "speech_style": profile.base_persona.speech_style,
-                "core_beliefs": profile.base_persona.core_beliefs
+                "core_beliefs": list(profile.base_persona.core_beliefs.values()) if isinstance(profile.base_persona.core_beliefs, dict) else []
             },
             "current_thinking": {
                 "market_outlooks": profile.current_thinking.market_outlooks,
