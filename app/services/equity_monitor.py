@@ -32,7 +32,7 @@ class EquityMonitor:
     def __init__(self):
         """Initialize equity monitor with RPC connection."""
         # Use indexing RPC for better reliability
-        self.rpc_url = os.getenv("BACKEND_RPC_URL", "https://indexing.testnet.riselabs.xyz")
+        self.rpc_url = os.getenv("BACKEND_RPC_URL", "https://testnet.riselabs.xyz")
         self.w3 = AsyncWeb3(AsyncHTTPProvider(self.rpc_url))
         
         # Contract setup

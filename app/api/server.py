@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+from fastapi import Query
 import logging
 
 from ..services.storage import JSONStorage
@@ -45,8 +46,30 @@ active_traders = {}
 app.include_router(admin_router)
 
 
+# Application startup
+@app.on_event("startup")
+async def startup():
+    """Initialize services on startup."""
+    logger.info("Starting RISE AI Trading Bot API...")
+    
+    # Check and repair data files if needed
+    try:
+        logger.info("Validating data files...")
+        repair_results = storage.repair_all_data_files()
+        repaired = [f for f, status in repair_results.items() if status == "repaired"]
+        if repaired:
+            logger.warning(f"Repaired corrupted files: {', '.join(repaired)}")
+        else:
+            logger.info("All data files are valid")
+    except Exception as e:
+        logger.error(f"Failed to validate data files: {e}")
+    
+    logger.info("API startup complete")
+
+
 class ProfileSummary(BaseModel):
     """Profile summary response."""
+    account_id: str  # Added for frontend
     handle: str
     name: str
     trading_style: str
@@ -75,6 +98,7 @@ class ChatResponse(BaseModel):
 
 class ProfileDetail(BaseModel):
     """Detailed profile response."""
+    account_id: str  # Added for frontend
     handle: str
     name: str
     bio: str
@@ -95,6 +119,15 @@ class ActionResponse(BaseModel):
     success: bool
     message: str
     data: Optional[Dict[str, Any]] = None
+
+
+class ProfilesResponse(BaseModel):
+    """Paginated profiles response."""
+    profiles: List[ProfileSummary]
+    total: int
+    page: int
+    limit: int
+    has_more: bool
 
 
 @app.get("/")
@@ -127,9 +160,12 @@ async def health_check():
         }
 
 
-@app.get("/api/profiles", response_model=List[ProfileSummary])
-async def list_profiles():
-    """List all trading profiles."""
+@app.get("/api/profiles", response_model=ProfilesResponse)
+async def list_profiles(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page")
+):
+    """List all trading profiles with pagination."""
     try:
         accounts = storage.list_accounts()
         profiles = []
@@ -151,6 +187,7 @@ async def list_profiles():
                 total_pnl = analytics.get("total_pnl", 0.0)
                 
                 profiles.append(ProfileSummary(
+                    account_id=account.id,  # Include account_id
                     handle=account.persona.handle,
                     name=account.persona.name,
                     trading_style=account.persona.trading_style.value,
@@ -160,10 +197,33 @@ async def list_profiles():
                     pending_actions=len(pending_actions)
                 ))
         
-        return profiles
+        # Apply pagination
+        total = len(profiles)
+        start_idx = (page - 1) * limit
+        end_idx = start_idx + limit
+        paginated_profiles = profiles[start_idx:end_idx]
+        
+        return ProfilesResponse(
+            profiles=paginated_profiles,
+            total=total,
+            page=page,
+            limit=limit,
+            has_more=end_idx < total
+        )
         
     except Exception as e:
         logger.error(f"Error listing profiles: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/profiles/all", response_model=List[ProfileSummary])
+async def list_all_profiles():
+    """List all trading profiles without pagination (backward compatibility)."""
+    try:
+        response = await list_profiles(page=1, limit=1000)
+        return response.profiles
+    except Exception as e:
+        logger.error(f"Error listing all profiles: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -223,6 +283,7 @@ async def get_profile(handle: str):
         positions = {}
         
         return ProfileDetail(
+            account_id=account.id,  # Include account_id
             handle=account.persona.handle,
             name=account.persona.name,
             bio=account.persona.bio,

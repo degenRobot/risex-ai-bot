@@ -2,43 +2,52 @@
 
 ## System Design
 
-The RISE AI Trading Bot uses an asynchronous architecture with shared state management between chat and trading systems.
+The RISE AI Trading Bot is an autonomous trading system where AI traders with unique personalities make decisions on RISE perpetuals DEX. Users can influence trading behavior through chat conversations.
+
+**Key Innovation**: Chat-driven AI personality influence system with real-time trading integration.
 
 ### Component Overview
 
 ```
-┌─────────────────────┐     ┌─────────────────────┐
-│    REST API         │     │   Trading Engine    │
-│  (FastAPI/Uvicorn)  │     │  (Async Executor)   │
-└──────────┬──────────┘     └──────────┬──────────┘
-           │                           │
-           │                           │
-           ▼                           ▼
-    ┌──────────────────────────────────────────┐
-    │         Shared Thought Process           │
-    │     (Async State Management)             │
-    └──────────────────────────────────────────┘
-                       │
-                       ▼
-    ┌──────────────────────────────────────────┐
-    │          JSON Storage Layer              │
-    │  (accounts, decisions, chat, thoughts)   │
-    └──────────────────────────────────────────┘
+┌─────────────────────┐     ┌─────────────────────┐     ┌─────────────────────┐
+│    Chat API         │     │   Trading Engine    │     │  Account Manager    │
+│  (User Influence)   │     │ (Parallel Executor) │     │  (Fresh Creation)   │
+└──────────┬──────────┘     └──────────┬──────────┘     └──────────┬──────────┘
+           │                           │                           │
+           │                           │                           │
+           ▼                           ▼                           ▼
+    ┌───────────────────────────────────────────────────────────────────────┐
+    │                    Shared Profile System                              │
+    │              (AI Personalities + Tool Calling)                       │
+    └───────────────────────────────────────────────────────────────────────┘
+                       │                           │
+                       ▼                           ▼
+    ┌──────────────────────────────────┐    ┌──────────────────────────────────┐
+    │        Equity Monitor            │    │         Market Manager          │
+    │   (Real-time RPC Balance)        │    │    (Live RISE API Data)        │
+    └──────────────────────────────────┘    └──────────────────────────────────┘
+                       │                           │
+                       ▼                           ▼
+    ┌───────────────────────────────────────────────────────────────────────┐
+    │                         JSON Storage                                  │
+    │      (accounts, equity, markets, chat, thoughts, trades)             │
+    └───────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Data Flow
 
 ```
-User Input --> Chat API --> AI Processing --> Tool Calls
-                                   │
-                                   ▼
-                          Update Thought Process
-                                   │
-                                   ▼
-Market Data --> Trading Engine --> Read Thoughts --> Decision
-                                                       │
-                                                       ▼
-                                                 Execute Trade
+Fresh Account Creation:
+Keys Generated → Signer Registration → USDC Deposit → Profile Creation → Ready for Trading
+
+Chat Influence Flow:
+User Message → Chat API → AI Processing → Tool Calls → Profile Updates → Trading Context
+
+Trading Decision Flow:
+Market Data → Profile Analysis → AI Decision → Order Execution → Equity Update → Feedback Loop
+
+Real-time Monitoring:
+RPC Equity Monitor ← → Market Data Updates ← → Profile State ← → Trading Decisions
 ```
 
 ## Core Components

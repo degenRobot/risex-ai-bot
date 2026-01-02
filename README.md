@@ -1,25 +1,31 @@
-# RISE AI Trading Bot
+# 🤖 RISE AI Trading Bot
 
-AI-powered trading bot for RISE that uses personality-driven decision making and chat-based influence.
+An autonomous trading system where AI traders with unique personalities make decisions on RISE perpetuals DEX. Users can influence trading behavior through chat conversations.
 
-## Overview
+## ✨ Overview
 
-The bot creates AI traders with distinct personalities that make autonomous trading decisions. Users can chat with these traders to influence their market outlook and trading behavior.
+Create AI traders with distinct personalities that:
+- 🎭 **Respond in character** to market events and user messages
+- 📈 **Make autonomous trading decisions** based on personality and influences
+- 💬 **Learn from chat interactions** and adjust market outlook
+- 💰 **Trade real assets** on RISE testnet with gasless transactions
+- 📊 **Monitor equity in real-time** via on-chain RPC calls
 
 ```
-    User Chat                    Trading Engine
-        |                              |
-        v                              v
-    Chat API -----> Shared <------ Market Data
-                 Thought Process
-                       |
-                       v
-                 Trading Decisions
+🗣️  User Chat → 🤖 AI Personality → 📊 Market Analysis → 💸 Trading Decision
+                        ↓                    ↑
+                 📝 Profile Updates ← 💰 Live Equity Monitor
 ```
 
-## Quick Start
+## 🚀 Quick Start
 
-### Install
+### Prerequisites
+
+- Python 3.11+
+- Poetry package manager
+- OpenRouter API key for AI features
+
+### Install & Setup
 
 ```bash
 # Clone repository
@@ -31,8 +37,27 @@ poetry install
 
 # Set up environment
 cp .env.example .env
-# Edit .env with your OPENROUTER_API_KEY
+
+# Add your OpenRouter API key to .env
+echo "OPENROUTER_API_KEY=sk-or-v1-your-key-here" >> .env
 ```
+
+### Create Your First AI Trader
+
+```bash
+# Interactive profile creation
+poetry run python scripts/create_fresh_profile.py
+
+# Or specify personality and deposit
+poetry run python scripts/create_fresh_profile.py cynical 1000
+```
+
+This creates a fresh account with:
+- ✅ Cryptographic keys generated  
+- ✅ Signer registered for gasless trading
+- ✅ USDC deposited (minted on testnet)
+- ✅ AI personality configured
+- ✅ Ready for chat and trading
 
 ### Run Locally
 

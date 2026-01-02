@@ -38,15 +38,37 @@ class JSONStorage:
         self.positions_file = self.data_dir / "positions.json"
     
     def _load_json(self, file_path: Path) -> Dict:
-        """Load JSON data from file."""
+        """Load JSON data from file with error recovery."""
         if not file_path.exists():
             return {}
         
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
-            raise StorageError(f"Failed to load {file_path.name}: {e}")
+        except json.JSONDecodeError as e:
+            # Handle corrupted JSON by backing up and resetting
+            print(f"WARNING: Corrupted JSON in {file_path.name}: {e}")
+            backup_path = file_path.with_suffix(f".backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+            
+            try:
+                # Backup corrupted file
+                import shutil
+                shutil.copy2(file_path, backup_path)
+                print(f"Backed up corrupted file to: {backup_path}")
+                
+                # Reset to empty JSON
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump({}, f)
+                print(f"Reset {file_path.name} to empty JSON")
+                
+                return {}
+            except Exception as backup_error:
+                print(f"ERROR: Failed to backup/reset {file_path.name}: {backup_error}")
+                # Return empty dict instead of crashing
+                return {}
+        except IOError as e:
+            print(f"ERROR: IO error loading {file_path.name}: {e}")
+            return {}
     
     def _save_json(self, file_path: Path, data: Dict) -> None:
         """Save JSON data to file."""
@@ -200,6 +222,47 @@ class JSONStorage:
                 continue
         
         return result
+    
+    # Data validation and repair methods
+    def validate_json_file(self, file_path: Path) -> bool:
+        """Validate that a file contains valid JSON."""
+        if not file_path.exists():
+            return True  # Non-existent files are "valid"
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                json.load(f)
+            return True
+        except Exception:
+            return False
+    
+    def repair_all_data_files(self) -> Dict[str, str]:
+        """Check and repair all data files, returning status for each."""
+        results = {}
+        data_files = [
+            self.accounts_file,
+            self.chat_sessions_file,
+            self.profile_updates_file,
+            self.trades_file,
+            self.personas_file,
+            self.decisions_file,
+            self.sessions_file,
+            self.pending_actions_file,
+            self.positions_file,
+            self.data_dir / "equity_snapshots.json",
+            self.data_dir / "thought_processes.json",
+            self.data_dir / "markets.json"
+        ]
+        
+        for file_path in data_files:
+            if not self.validate_json_file(file_path):
+                # Force repair by trying to load
+                self._load_json(file_path)
+                results[file_path.name] = "repaired"
+            else:
+                results[file_path.name] = "valid"
+        
+        return results
     
     # Utility methods
     def get_stats(self) -> Dict:
