@@ -1,0 +1,45 @@
+# fly.toml app configuration file
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = "risex-trading-bot"
+primary_region = "sjc"
+kill_signal = "SIGTERM"
+kill_timeout = 30
+
+[build]
+
+[env]
+  PORT = "8080"
+  PYTHONPATH = "/app"
+  DATA_DIR = "/data"
+  TRADING_MODE = "dry"
+  TRADING_INTERVAL = "60"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+    protocol = "http"
+    timeout = "3s"
+
+[mounts]
+  source = "trading_data"
+  destination = "/data"
+  processes = ["app"]
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+  processes = ["app"]

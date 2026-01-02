@@ -53,14 +53,17 @@ OPENROUTER_API_KEY=your_openrouter_api_key_here
 ### 3. Test the Integration
 
 ```bash
-# Test RISE API integration
-poetry run python test_complete_flow.py
+# Test order placement with TIF variations (RECOMMENDED)
+poetry run python tests/test_tif_variations.py
 
-# Test AI persona generation
-poetry run python test_ai_persona.py
+# Test profile generation and full flow
+poetry run python tests/test_full_flow.py
 
-# Basic integration check
-poetry run python test_rise_integration.py
+# Test AI trading logic
+poetry run python tests/test_ai_trading.py
+
+# Test deposits
+poetry run python tests/test_deposit.py
 ```
 
 ## Project Structure
@@ -71,20 +74,22 @@ risex-ai-bot/
 │   ├── core/
 │   │   ├── account_manager.py    # Account & persona management
 │   │   ├── trading_loop.py       # Automated trading bot with decision logging
-│   │   ├── market_manager.py     # Global market data manager (NEW) ⚡
-│   │   └── parallel_executor.py  # Parallel profile executor (NEW) ⚡
+│   │   ├── market_manager.py     # Global market data manager
+│   │   └── parallel_executor.py  # Parallel profile executor
 │   ├── services/
-│   │   ├── rise_client.py        # RISE API client (gasless trading)
-│   │   ├── ai_client.py          # OpenRouter AI client with history-aware decisions
-│   │   ├── ai_tools.py           # AI tool definitions (NEW) 🛠️
+│   │   ├── rise_client.py        # RISE API client (gasless trading) ✅
+│   │   ├── ai_client.py          # OpenRouter AI client
+│   │   ├── ai_tools.py           # AI tool definitions
 │   │   ├── mock_social.py        # Mock social media profiles
-│   │   └── storage.py            # JSON storage with decision logging + pending actions
+│   │   └── storage.py            # JSON storage
+│   ├── utils/
+│   │   └── profile_generator.py  # Profile creation helper (NEW) 🎯
 │   ├── models/
 │   │   ├── __init__.py           # Core models
-│   │   └── pending_actions.py    # Pending action models (NEW) 🎯
-│   ├── api/                      # FastAPI endpoints (ready for expansion)
+│   │   └── pending_actions.py    # Pending action models
+│   ├── api/                      # FastAPI endpoints
 │   ├── config.py                 # Configuration management
-│   └── models.py                 # Pydantic models with decision logging
+│   └── models.py                 # Pydantic models
 ├── scripts/                      # Production scripts
 │   ├── run_trading_bot.py        # Original trading bot runner
 │   └── run_enhanced_bot.py       # Enhanced parallel bot (NEW) 🚀
@@ -107,6 +112,24 @@ risex-ai-bot/
 
 ## Core Components
 
+### Profile Generator (`app/utils/profile_generator.py`)
+
+Quick profile creation with full setup:
+
+```python
+from app.utils.profile_generator import quick_setup_profile
+
+# Create new AI trader with one function call
+profile = await quick_setup_profile(
+    name="AI Alpha Trader",
+    deposit=1000.0,  # Initial USDC deposit
+    profile_type="moderate"  # conservative, moderate, aggressive
+)
+
+print(f"Account: {profile['profile']['address']}")
+print(f"Signer: {profile['profile']['signer_address']}")
+```
+
 ### RISE Client (`app/services/rise_client.py`)
 
 Handles all RISE API interactions with gasless trading support:
@@ -118,10 +141,10 @@ async with RiseClient() as client:
     # Register signer for gasless trading
     await client.register_signer(account_key, signer_key)
     
-    # Deposit USDC (triggers faucet)
+    # Deposit USDC (6 decimals!)
     await client.deposit_usdc(account_key, amount=100.0)
     
-    # Place gasless order
+    # Place gasless order (use TIF=3 for IOC)
     await client.place_order(
         account_key, signer_key,
         market_id=1, size=0.01, price=95000,
@@ -461,30 +484,36 @@ MIT License - see LICENSE file for details.
 
 ## Current Status (January 2025)
 
-### Implementation Complete ✅
+### ✅ Working Implementation
 
-All features have been successfully implemented:
+We have successfully implemented and tested all core features:
 
 1. **RISE API Integration** - Complete with proper EIP-712 signing
-2. **AI Trading System** - 5 personas with decision-making capabilities  
-3. **Parallel Architecture** - Tool calling and pending actions
-4. **External API** - FastAPI server with profile endpoints
-5. **Deployment Ready** - Docker + Fly.io configuration
+2. **Order Placement** - Successfully placed orders with TIF=IOC (Order ID: 5766369)
+3. **Profile Generation** - Automated account/signer key creation and setup
+4. **AI Trading Logic** - Market analysis and decision making
+5. **Gasless Trading** - Working with proper signer registration
 
-### Testnet Blocker ⚠️
+### 🎯 Key Discoveries
 
-**RISE testnet markets are currently disabled**, causing all trading operations to fail:
-- Deposits fail with blockchain errors
-- Orders revert with "status 0" 
-- This is a testnet infrastructure issue, not an implementation problem
+**Critical for Order Success:**
+- Use TIF=3 (IOC) for orders - GTC orders fail on testnet
+- USDC uses 6 decimals (not 18)
+- Order sizes/prices use 18 decimals
+- 47-byte order encoding is working correctly
 
-Our code correctly implements:
-- EIP-712 message signing for all operations
-- Proper nonce generation algorithm
-- Gasless architecture with 3-key system
-- All RISE API endpoints
+**Successful Test Results:**
+```bash
+✅ Deposited 1000 USDC (TX: 0x7674749131f423b0820a62e9096380012724f5dfae5b93ceccd6db51f44c8049)
+✅ Registered signer for gasless trading
+✅ Placed order successfully (Order ID: 5766369, TX: 0x96e552b3b076d8c424722cf304346f35afd585271d85f432ba5cd51818a40f00)
+```
 
-Once the testnet is operational, the bot will work as designed.
+### 🚧 Known Limitations
+
+- New accounts may need initial ETH or activity before deposits work
+- Some accounts show "missing nonce or insufficient funds" errors
+- Markets show `available: false` but orders still execute
 
 ## Troubleshooting
 

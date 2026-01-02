@@ -348,10 +348,27 @@ class RiseClient:
         price: float,
         side: str,  # "buy" or "sell"
         order_type: str = "limit",  # "limit" or "market"
+        tif: int = 3,  # Default to IOC (3) which works on testnet
         post_only: bool = False,
         reduce_only: bool = False,
     ) -> Dict[str, Any]:
-        """Place a gasless order."""
+        """Place a gasless order.
+        
+        Args:
+            account_key: Main account private key
+            signer_key: Signer private key (must be different)
+            market_id: Market ID (1=BTC, 2=ETH, 3=BNB)
+            size: Order size (e.g., 0.01 for 0.01 BTC)
+            price: Order price in USDC
+            side: "buy" or "sell"
+            order_type: "limit" or "market"
+            tif: Time-in-force (0=GTC, 1=GTT, 2=FOK, 3=IOC). Default 3 (IOC) works on testnet
+            post_only: Maker-only order
+            reduce_only: Close position only
+            
+        Returns:
+            Order response with order_id, transaction_hash, etc.
+        """
         if EthAccount.from_key(account_key).address == EthAccount.from_key(signer_key).address:
             raise ValueError("Account and signer must be different addresses")
         
@@ -368,8 +385,8 @@ class RiseClient:
         # Convert parameters
         side_int = 0 if side.lower() == "buy" else 1
         order_type_int = 1 if order_type.lower() == "market" else 0
-        tif = 0  # GTC (Good Till Cancelled)
-        expiry = int(time.time()) + 86400  # 24 hours
+        # tif is now a parameter with default 3 (IOC)
+        expiry = int(time.time()) + 86400 if tif == 1 else 0  # Only set expiry for GTT
         
         # Encode order for hashing (47-byte format)
         flags = (
