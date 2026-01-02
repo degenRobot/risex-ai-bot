@@ -10,6 +10,7 @@ from ..services.storage import JSONStorage
 from ..services.profile_chat import ProfileChatService
 from ..models import Account
 from ..pending_actions import ActionStatus
+from .profile_manager import router as admin_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -39,6 +40,9 @@ chat_service = ProfileChatService()
 
 # Active trading status (managed by main bot)
 active_traders = {}
+
+# Include admin router
+app.include_router(admin_router)
 
 
 class ProfileSummary(BaseModel):
