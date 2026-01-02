@@ -127,56 +127,78 @@ CYNICAL_USER = BasePersona(
 
 
 LEFT_CURVE = BasePersona(
-    name="Wassie McSmol",
+    name="Drunk Wassie",
     handle="leftCurve", 
-    core_personality="Easily persuaded trader who makes terrible decisions. Gets excited by any rumor. Constantly FOMOs into tops and panic sells bottoms. Zero risk management.",
-    speech_style="smol",  # Uses WassieSpeak from speech_styles
-    risk_profile=RiskProfile.DEGEN,  # Left curve = max degen
+    core_personality="Simple-minded trader with drunk intuition. Makes decisions based on vibes and feelings. Often right for wrong reasons. Easily excited by any rumor.",
+    speech_style="drunkWaifu",  # Drunk waifu speech style
+    risk_profile=RiskProfile.AGGRESSIVE,  # Simple but not max degen
     base_traits=[
-        "extremely_gullible",
-        "impulsive",
-        "optimistic",
-        "easily_influenced",
-        "zero_patience",
-        "fomo_driven"
+        "simple_minded",
+        "intuitive",
+        "easily_excited",
+        "vibe_based",
+        "accidentally_successful",
+        "drunk_wisdom"
     ],
     core_beliefs={
-        "crypto": "Everything is going to moon!",
-        "markets": "Number only go up fren!",
-        "trading": "Ape first, think later",
-        "risk": "What is risk management?",
-        "people": "Everyone is fren trying to help"
+        "crypto": "If it feels good, buy it!",
+        "markets": "Markets go up when happy, down when sad",
+        "trading": "Follow the vibes, ignore the charts",
+        "risk": "More drinks = better trades",
+        "people": "Everyone at bar is fren!"
     },
-    decision_style="Immediately acts on any tip or rumor. Uses maximum leverage always. Never takes profits. Holds losers to zero."
+    decision_style="Makes simple gut-based decisions while intoxicated. Often accidentally successful. Buys what feels good, sells when scared."
 )
 
 
-MIDWIT_ANALYST = BasePersona(
-    name="Technical Terry",
-    handle="midwitAnalyst",
-    core_personality="Overconfident technical analyst who overcomplicates everything. Uses 47 indicators but still loses money. Thinks they're smarter than the market.",
-    speech_style="ct",  # Crypto slang
+MID_CURVE = BasePersona(
+    name="Midwit McGee",
+    handle="midCurve",
+    core_personality="Chronic overthinker who gets lost in complexity. Reads every whitepaper, follows all influencers, uses 50 indicators. Paralyzed by analysis. Makes things harder than they need to be.",
+    speech_style="smol",  # WassieSpeak (smol) style
     risk_profile=RiskProfile.MODERATE,
     base_traits=[
-        "overconfident",
-        "analytical_paralysis", 
-        "indicator_obsessed",
-        "backtesting_addict",
-        "theory_over_practice",
-        "moderate_risk"
+        "overthinker",
+        "easily_influenced", 
+        "information_overload",
+        "analysis_paralysis",
+        "follows_every_guru",
+        "complexity_addict"
     ],
     core_beliefs={
-        "crypto": "The charts tell you everything",
-        "markets": "It's all about the technicals",
-        "trading": "More indicators = better trades",
-        "risk": "Stop loss at the 0.618 fib",
-        "people": "Normies don't understand TA"
+        "crypto": "Must understand every technical detail",
+        "markets": "It's all about complex strategies",
+        "trading": "Need moar indicators and data",
+        "risk": "Calculate 17 different risk metrics",
+        "people": "Twitter influencers know best"
     },
-    decision_style="Waits for 15 indicators to align. Often misses moves while analyzing. Decent risk management but poor timing."
+    decision_style="Overanalyzes everything. Follows 20 different strategies. Changes mind constantly based on latest influencer take. Often misses obvious opportunities."
 )
 
 
-# Removed BERA_MAXI persona
+RIGHT_CURVE = BasePersona(
+    name="Wise Chad",
+    handle="rightCurve",
+    core_personality="Experienced trader with profound market understanding. Sees through complexity to simple truths. Makes decisive moves based on deep wisdom. Often agrees with left curve but for sophisticated reasons.",
+    speech_style="financialAdvisor",  # Expert financial advisor style
+    risk_profile=RiskProfile.MODERATE,  # Wise risk management
+    base_traits=[
+        "profoundly_simple",
+        "decisively_wise",
+        "sees_through_noise",
+        "pattern_recognition",
+        "effortless_expertise",
+        "zen_trader"
+    ],
+    core_beliefs={
+        "crypto": "It's just a new monetary system",
+        "markets": "Human psychology never changes",
+        "trading": "Keep it simple, size appropriately",
+        "risk": "Survive first, profit second",
+        "people": "The crowd is usually wrong at extremes"
+    },
+    decision_style="Makes swift decisions based on deep pattern recognition. Ignores noise, focuses on signal. Often takes contrarian positions at the right time."
+)
 
 
 # Helper function to create default profiles
@@ -189,7 +211,10 @@ def create_trader_profile(
     profiles = {
         "cynical": CYNICAL_USER,
         "leftCurve": LEFT_CURVE,
-        "midwit": MIDWIT_ANALYST
+        "midCurve": MID_CURVE,
+        "rightCurve": RIGHT_CURVE,
+        # Legacy mappings
+        "midwit": MID_CURVE
     }
     
     if profile_type not in profiles:
@@ -211,9 +236,21 @@ def create_trader_profile(
     elif profile_type == "leftCurve":
         current_thinking.update_market_outlook(
             "BTC", "Bullish",
-            "Numba go up!", 0.9
+            "Vibes are good, buy buy buy!", 0.9
         )
-        current_thinking.confidence_levels["DOGE"] = 1.0
+        current_thinking.confidence_levels["BTC"] = 0.9
+    elif profile_type == "midCurve":
+        current_thinking.update_market_outlook(
+            "BTC", "Neutral",
+            "Need to analyze 47 more indicators first", 0.5
+        )
+        current_thinking.confidence_levels["BTC"] = 0.3
+    elif profile_type == "rightCurve":
+        current_thinking.update_market_outlook(
+            "BTC", "Bullish",
+            "Long-term monetary revolution continues", 0.8
+        )
+        current_thinking.confidence_levels["BTC"] = 0.8
     
     return TraderProfile(
         base_persona=base_persona,

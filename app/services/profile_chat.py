@@ -123,13 +123,17 @@ class ProfileChatService:
         profile_mapping = {
             "crypto_degen": "leftCurve",
             "btc_hodler": "cynical", 
-            "trend_master": "midwit",
-            "market_contrarian": "cynical",
-            "yolo_king": "leftCurve"
+            "trend_master": "midCurve",
+            "market_contrarian": "rightCurve",
+            "yolo_king": "leftCurve",
+            # Direct curve mappings
+            "leftCurve": "leftCurve",
+            "midCurve": "midCurve",
+            "rightCurve": "rightCurve"
         }
         
-        # Default to leftCurve if not mapped
-        profile_type = profile_mapping.get(account.persona.handle, "leftCurve")
+        # Default to midCurve if not mapped
+        profile_type = profile_mapping.get(account.persona.handle, "midCurve")
         
         profile = create_trader_profile(profile_type, account_id)
         self.trader_profiles[account_id] = profile

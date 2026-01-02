@@ -185,9 +185,10 @@ class RiseClient:
     async def get_all_positions(self, account: str) -> List[Dict[str, Any]]:
         """Get all positions for account."""
         response = await self._request(
-            "GET", f"/v1/accounts/{account}/positions"
+            "GET", "/v1/positions",
+            params={"account": account}
         )
-        return response.get("data", [])
+        return response.get("positions", [])
     
     async def get_balance(self, account: str) -> Dict[str, Any]:
         """Get account balance."""
@@ -243,8 +244,9 @@ class RiseClient:
         size: float,
         side: str,
         reduce_only: bool = False,
+        check_success: bool = True
     ) -> Dict[str, Any]:
-        """Simplified market order placement.
+        """Simplified market order placement with success detection.
         
         Note: RISE testnet requires limit orders with price=0 for market-like behavior.
         Using order_type="limit" with price=0 and TIF=3 (IOC) achieves market order execution.
@@ -256,11 +258,13 @@ class RiseClient:
             size: Order size (e.g., 0.01 for 0.01 BTC)
             side: "buy" or "sell"
             reduce_only: Close position only
+            check_success: Check if order was filled (default True)
             
         Returns:
-            Order response
+            Order response with enhanced success detection
         """
-        return await self.place_order(
+        # Place the order
+        result = await self.place_order(
             account_key=account_key,
             signer_key=signer_key,
             market_id=market_id,
@@ -272,6 +276,35 @@ class RiseClient:
             reduce_only=reduce_only,
             max_retries=3  # Enable retries for RPC issues
         )
+        
+        # Extract order ID and check for success
+        if check_success and result and "data" in result:
+            order_id = result["data"].get("order_id")
+            if order_id:
+                # Import here to avoid circular dependency
+                from .order_tracker import OrderTracker
+                
+                account = EthAccount.from_key(account_key)
+                tracker = OrderTracker()
+                
+                try:
+                    # Check if order was filled
+                    success_check = await tracker.check_order_success(
+                        account=account.address,
+                        order_id=order_id,
+                        expected_side=side,
+                        expected_size=size,
+                        timeout_seconds=10
+                    )
+                    
+                    # Add success info to result
+                    result["order_filled"] = success_check.get("success", False)
+                    if success_check.get("success"):
+                        result["fill_details"] = success_check
+                finally:
+                    await tracker.close()
+        
+        return result
     
     async def close_position(
         self,
@@ -676,10 +709,14 @@ class RiseClient:
             params["market_id"] = market_id
         
         response = await self._request(
-            "GET", "/v1/account/trade-history", 
+            "GET", "/v1/trade-history", 
             params=params
         )
-        return response.get("data", [])
+        # Response has trades in a nested data structure
+        data = response.get("data", {})
+        if isinstance(data, dict):
+            return data.get("trades", [])
+        return []
     
     async def get_realtime_market_prices(self) -> Dict[str, float]:
         """Get real-time prices for all markets."""

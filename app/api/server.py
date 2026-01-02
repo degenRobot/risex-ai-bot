@@ -10,6 +10,7 @@ import logging
 from ..services.storage import JSONStorage
 from ..services.profile_chat import ProfileChatService
 from ..services.equity_monitor import get_equity_monitor
+from ..services.async_data_manager import AsyncDataManager
 from ..models import Account
 from ..pending_actions import ActionStatus
 from .profile_manager import router as admin_router
