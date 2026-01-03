@@ -44,6 +44,8 @@ class Account(BaseModel):
     deposited_at: Optional[datetime] = None
     deposit_amount: Optional[float] = None
     # Equity tracking
+    initial_equity: Optional[float] = None  # Starting equity for P&L tracking
+    equity_fetched_at: Optional[datetime] = None  # When initial equity was fetched
     latest_equity: Optional[float] = None
     equity_updated_at: Optional[datetime] = None
     equity_change_1h: Optional[float] = None

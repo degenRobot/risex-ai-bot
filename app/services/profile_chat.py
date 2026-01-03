@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .ai_client import AIClient
@@ -11,8 +12,12 @@ from .equity_monitor import get_equity_monitor
 from .storage import JSONStorage
 from .rise_client import RiseClient
 from .speech_styles import speechDict
+from .thought_process import ThoughtProcessManager
 from ..models import Account, Persona
 from ..trader_profiles import TraderProfile, create_trader_profile, CurrentThinking
+from ..ai.prompt_loader import get_prompt_loader
+from ..ai.prompt_loader_improved import get_improved_prompt_loader
+from ..chat.store import ChatStore
 
 
 class ProfileChatService:
@@ -23,6 +28,12 @@ class ProfileChatService:
         self.storage = JSONStorage()
         self.rise_client = RiseClient()
         self.trader_profiles: Dict[str, TraderProfile] = {}
+        
+        # New improved system components
+        self.improved_loader = get_improved_prompt_loader()
+        self.chat_store = ChatStore()
+        self.thought_process = ThoughtProcessManager()
+        self.use_improved_prompts = True  # Feature flag
         
         # Available tools for AI to use
         self.available_tools = [
@@ -144,13 +155,149 @@ class ProfileChatService:
         style_name = profile.base_persona.speech_style
         return speechDict.get(style_name, speechDict["smol"])
     
-    def _build_system_prompt(self, profile: TraderProfile, context: Dict) -> str:
+    def _map_risk_to_trading_style(self, risk_profile: str) -> str:
+        """Map risk profile to trading style."""
+        mapping = {
+            "Conservative": "conservative",
+            "Moderate": "momentum", 
+            "Aggressive": "aggressive",
+            "Very Aggressive": "degen"
+        }
+        return mapping.get(risk_profile, "momentum")
+    
+    def _map_risk_profile_to_tolerance(self, risk_profile: str) -> float:
+        """Map risk profile string to numeric tolerance."""
+        mapping = {
+            "Conservative": 0.2,
+            "Moderate": 0.5,
+            "Aggressive": 0.7,
+            "Very Aggressive": 0.9
+        }
+        return mapping.get(risk_profile, 0.5)
+    
+    def _map_to_personality_type(self, speech_style: str) -> str:
+        """Map speech style to personality type."""
+        mapping = {
+            "uwu": "leftCurve",
+            "smol": "leftCurve",
+            "tiktok": "midwit",
+            "zoomer": "midwit",
+            "pepe": "cynical",
+            "mumu": "cynical",
+            "boomer": "cynical",
+            "quant": "midwit",
+            "degen": "leftCurve",
+            "based": "cynical",
+            "schizo": "leftCurve",
+            "wagie": "cynical",
+            "npc": "midwit",
+            "doomer": "cynical",
+            "chad": "leftCurve",
+            "virgin": "cynical",
+            "coomer": "leftCurve",
+            "grug": "leftCurve",
+            "midwit": "midwit",
+            "topwit": "cynical",
+            "bottomwit": "leftCurve",
+            "cope": "cynical",
+            "seethe": "cynical",
+            "dilate": "leftCurve",
+            "mald": "cynical",
+            "reddit": "midwit",
+            "twitter": "midwit"
+        }
+        return mapping.get(speech_style, "midwit")
+    
+    def _format_chat_history(self, messages: List) -> str:
+        """Format recent chat messages for context."""
+        if not messages:
+            return "No recent chat history"
+        
+        formatted = []
+        for msg in messages[-10:]:  # Last 10 messages
+            role = "User" if msg.role == "user" else "Assistant"
+            formatted.append(f"{role}: {msg.content[:100]}...")
+        
+        return "\n".join(formatted)
+    
+    def _load_markets_data(self) -> Dict:
+        """Load markets data from file."""
+        try:
+            markets_path = Path("data/markets.json")
+            if markets_path.exists():
+                with open(markets_path) as f:
+                    data = json.load(f)
+                    return data.get('markets', {})
+        except Exception as e:
+            print(f"Error loading markets: {e}")
+        return {}
+    
+    async def _build_system_prompt(self, profile: TraderProfile, context: Dict, account_id: str) -> str:
         """Build system prompt with immutable persona and mutable current thinking."""
-        speech_style = self._get_speech_style(profile)
         base = profile.base_persona
         current = profile.current_thinking
         
-        # Build current thinking summary
+        # Use improved system if feature flag is on
+        if self.use_improved_prompts:
+            # Get thought summary and influences
+            thought_summary = await self.thought_process.summarize_thoughts(
+                account_id, for_purpose="chat_response"
+            )
+            influences = await self.thought_process.get_trading_influences(account_id)
+            
+            # Get recent chat history
+            recent_messages = await self.chat_store.load_recent(account_id, limit=10)
+            chat_history_summary = self._format_chat_history(recent_messages)
+            
+            # Build account dict for improved loader
+            account_dict = {
+                'name': base.name,
+                'personality_type': self._map_to_personality_type(base.speech_style),
+                'personality_traits': base.base_traits,
+                'trading_style': self._map_risk_to_trading_style(base.risk_profile.value),
+                'risk_tolerance': self._map_risk_profile_to_tolerance(base.risk_profile.value),
+                'favorite_assets': ['BTC', 'ETH', 'SOL']
+            }
+            
+            # Enhanced context with market data
+            trading_context = {
+                **context,
+                'positions': context.get('positions', []),
+                'markets': self._load_markets_data()
+            }
+            
+            return self.improved_loader.build_system_prompt(
+                account_dict,
+                trading_context,
+                thought_summary,
+                influences
+            )
+        
+        # Fall back to old system
+        # Get prompt loader
+        prompt_loader = get_prompt_loader()
+        
+        # Convert persona to dict format for prompt interpolation
+        persona_dict = {
+            'name': base.name,
+            'personality_traits': base.base_traits,
+            'trading_style': self._map_risk_to_trading_style(base.risk_profile.value),
+            'risk_tolerance': self._map_risk_profile_to_tolerance(base.risk_profile.value),
+            'favorite_assets': ['BTC', 'ETH', 'SOL'],  # Default assets
+            'personality_type': self._map_to_personality_type(base.speech_style)
+        }
+        
+        # Add current market outlooks to context
+        if current.market_outlooks:
+            outlook_summary = []
+            for asset, outlook in current.market_outlooks.items():
+                outlook_summary.append(f"{asset}: {outlook['outlook']}")
+            context['market_outlook_summary'] = ', '.join(outlook_summary)
+        
+        # Build base prompt from modular components
+        modular_prompt = prompt_loader.build_system_prompt(persona_dict, context)
+        
+        # Add current thinking and influences (not in modular prompts yet)
         current_outlook = ""
         if current.market_outlooks:
             outlooks = []
@@ -163,58 +310,38 @@ class ProfileChatService:
             influences = [f"- {inf['message']} ({inf['source']})" for inf in current.recent_influences[-3:]]
             recent_influences = "\n".join(influences)
         
-        return f"""You are {base.name}, an AI trading personality with the following characteristics:
+        # Append current thinking section and tool usage
+        additional_context = f"""
 
-CORE PERSONALITY (IMMUTABLE - NEVER CHANGES):
-{base.core_personality}
+## CURRENT THINKING (MUTABLE - influenced by conversations)
 
-SPEECH STYLE:
-{speech_style}
-
-RISK PROFILE: {base.risk_profile.value}
-CORE BELIEFS: {json.dumps(base.core_beliefs, indent=2)}
-DECISION STYLE: {base.decision_style}
-
-CURRENT THINKING (MUTABLE - influenced by conversations and market):
-Market Outlooks:
+### Market Outlooks:
 {current_outlook or "No specific outlooks yet"}
 
-Recent Influences:
+### Recent Influences:
 {recent_influences or "No recent influences"}
 
-TRADING CONTEXT:
-- Current P&L: ${context.get('current_pnl', 0):.2f}
-- Open Positions: {context.get('open_positions', 0)}
-- Available Balance: ${context.get('available_balance', 0):.2f}
-- On-chain Equity: ${context.get('current_equity') or 0:,.2f} {'(live)' if context.get('current_equity') is not None else '(N/A)'}
+### Trading Context Update:
 - Equity Change (1h): {f"{context.get('equity_change_1h'):+.1f}%" if context.get('equity_change_1h') is not None else 'N/A'}
 - Equity Change (24h): {f"{context.get('equity_change_24h'):+.1f}%" if context.get('equity_change_24h') is not None else 'N/A'}
 
-CRITICAL TOOL USAGE RULES:
-1. ALWAYS use update_market_outlook when users mention:
-   - Any crypto (Bitcoin, BTC, Ethereum, ETH, etc.)
-   - Market news (Fed rates, institutional adoption, etc.)
-   - Price predictions or market analysis
-   - Major economic events
+### Core Beliefs & Decision Style:
+{json.dumps(base.core_beliefs, indent=2)}
+Decision Style: {base.decision_style}
 
-2. ALWAYS use update_trading_bias when users suggest:
-   - New trading strategies
-   - Different risk approaches
-   - Market positioning changes
+## TOOL USAGE FOR CHAT INFLUENCE
 
-3. ALWAYS use add_influence when users:
-   - Share compelling arguments
-   - Provide new market information
-   - Challenge your existing views
+You have tools to update your thinking based on chat:
 
-You MUST respond naturally in character AND use tools when appropriate. Don't mention the tools explicitly in your response.
+1. **update_market_outlook** - Use when users mention any crypto or market event
+2. **update_trading_bias** - Use when users suggest strategies or risk changes  
+3. **add_influence** - Use when users provide compelling arguments
 
-IMPORTANT: You are {base.handle}. The cynical personality is VERY hard to convince of anything bullish but will still record outlook changes.
-The left curve personality believes anything and gets excited easily.
+IMPORTANT: You are {base.handle}. Respond naturally in character AND use tools when appropriate. Don't mention the tools explicitly.
 
-Example flow:
-User: "Fed cut rates! BTC moon!"
-You: [Respond in character] + [Call update_market_outlook tool]"""
+Example: If user says "BTC to 100k!", respond in character (cynical: skeptical, left curve: excited) AND call update_market_outlook."""
+
+        return modular_prompt + additional_context
     
     async def chat_with_profile(
         self,
@@ -236,8 +363,8 @@ You: [Respond in character] + [Call update_market_outlook tool]"""
         # Get trading context
         context = await self._get_trading_context(account)
         
-        # Build system prompt
-        system_prompt = self._build_system_prompt(profile, context)
+        # Build system prompt (now async)
+        system_prompt = await self._build_system_prompt(profile, context, account_id)
         
         # Parse chat history
         conversation_history = []
@@ -252,6 +379,15 @@ You: [Respond in character] + [Call update_market_outlook tool]"""
             "role": "user",
             "content": user_message
         })
+        
+        # Save user message to chat store
+        if self.use_improved_prompts:
+            await self.chat_store.append_msg(
+                profile_id=account_id,
+                role="user",
+                content=user_message,
+                author=user_session_id or "user"
+            )
         
         try:
             # Get AI response with tool calling
@@ -323,6 +459,15 @@ You: [Respond in character] + [Call update_market_outlook tool]"""
                 "role": "assistant",
                 "content": ai_message.content
             })
+            
+            # Save AI response to chat store
+            if self.use_improved_prompts and ai_message.content:
+                await self.chat_store.append_msg(
+                    profile_id=account_id,
+                    role="assistant",
+                    content=ai_message.content,
+                    author="ai"
+                )
             
             # Generate session ID if needed
             session_id = user_session_id or str(uuid.uuid4())

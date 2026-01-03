@@ -11,6 +11,8 @@ from web3.exceptions import ContractLogicError
 from ..config import settings
 from .storage import JSONStorage
 from .rise_client import RiseClient
+from ..realtime.bus import publish_event
+from ..realtime.events import create_account_update
 
 # Contract configuration
 PERPS_MANAGER_ADDRESS = "0x68cAcD54a8c93A3186BF50bE6b78B761F728E1b4"
@@ -351,6 +353,17 @@ class EquityMonitor:
                 f"(1h: {f'{change_1h:+.1f}%' if change_1h is not None else 'N/A'}, "
                 f"24h: {f'{change_24h:+.1f}%' if change_24h is not None else 'N/A'})"
             )
+            
+            # Publish account update event
+            total_pnl = equity - account_data.get('deposit_amount', 1000.0)
+            await publish_event(create_account_update(
+                profile_id=account_id,
+                address=address,
+                equity=equity,
+                free_margin=free_margin,
+                positions_count=len(positions),
+                total_pnl=total_pnl
+            ))
         
         return True
     

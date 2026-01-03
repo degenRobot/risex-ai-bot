@@ -2,8 +2,9 @@
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
+import uuid
 
 from ..core.market_manager import get_market_manager
 from ..models import Account
@@ -13,6 +14,23 @@ from ..services.ai_tools import TradingTools
 from ..services.equity_monitor import get_equity_monitor
 from ..services.rise_client import RiseClient
 from ..services.storage import JSONStorage
+from ..realtime.bus import publish_event
+from ..realtime.events import (
+    create_market_update,
+    create_trade_decision,
+    create_account_update,
+    EventType,
+    RealtimeEvent
+)
+from ..trading.actions import (
+    get_action_queue,
+    PendingAction as TradingAction,
+    ActionType,
+    ActionPriority
+)
+from ..ai.prompt_loader import get_prompt_loader
+from ..ai.prompt_loader_improved import get_improved_prompt_loader
+from ..services.thought_process import ThoughtProcessManager
 
 
 class ParallelProfileExecutor:
@@ -26,6 +44,11 @@ class ParallelProfileExecutor:
         self.rise_client = RiseClient()
         self.ai_client = AIClient()
         self.trading_tools = TradingTools(self.rise_client, self.storage, dry_run=dry_run)
+        self.action_queue = get_action_queue()
+        self.prompt_loader = get_prompt_loader()
+        self.improved_loader = get_improved_prompt_loader()
+        self.thought_process = ThoughtProcessManager()
+        self.use_improved_prompts = True  # Feature flag
         self.logger = logging.getLogger(__name__)
         
         # Log mode
@@ -36,10 +59,9 @@ class ParallelProfileExecutor:
         self.active_profiles: List[Account] = []
         self.is_running = False
         
-        if dry_run:
-            self.logger.info("Parallel executor initialized in DRY RUN mode")
-        else:
-            self.logger.info("Parallel executor initialized in LIVE mode")
+        # Market rotation settings
+        self.markets_per_cycle = 5  # Process 5 markets per cycle
+        self.market_rotation_index = 0  # Track which markets to check
     
     async def initialize(self):
         """Initialize the executor with active profiles."""
@@ -87,6 +109,23 @@ class ParallelProfileExecutor:
             
             self.logger.info(f"Market: BTC {market_summary['btc']}, ETH {market_summary['eth']}")
             
+            # Publish market update events
+            if market_data.get('btc_price'):
+                await publish_event(create_market_update(
+                    symbol="BTC",
+                    price=market_data.get('btc_price', 0),
+                    change_24h=market_data.get('btc_change', 0),
+                    volume_24h=market_data.get('btc_volume', 0)
+                ))
+            
+            if market_data.get('eth_price'):
+                await publish_event(create_market_update(
+                    symbol="ETH",
+                    price=market_data.get('eth_price', 0),
+                    change_24h=market_data.get('eth_change', 0),
+                    volume_24h=market_data.get('eth_volume', 0)
+                ))
+            
             # 2. Process each profile in parallel
             profile_tasks = []
             for profile in self.active_profiles:
@@ -109,7 +148,10 @@ class ParallelProfileExecutor:
             # 3. Check all pending actions across profiles
             await self._check_all_pending_actions(market_data)
             
-            # 4. Cleanup old actions periodically
+            # 4. Process trading action queue
+            await self._process_action_queue()
+            
+            # 5. Cleanup old actions periodically
             if datetime.now().hour == 0 and datetime.now().minute < 5:
                 removed = self.storage.cleanup_expired_actions()
                 if removed > 0:
@@ -286,27 +328,103 @@ class ParallelProfileExecutor:
             if account and account.equity_change_24h is not None:
                 equity_info += f"\n- Equity Change (24h): {account.equity_change_24h:+.1f}%"
         
-        # Build system prompt
-        system_prompt = f"""You are {persona.name}, a crypto trader with the following profile:
-- Trading Style: {persona.trading_style.value}
-- Bio: {persona.bio}
-- Personality: {', '.join(persona.personality_traits)}
+        # Build system prompt using improved prompts
+        if self.use_improved_prompts:
+            # Get thought summary and influences
+            thought_summary = await self.thought_process.summarize_thoughts(
+                profile.id, for_purpose="trading_decision"
+            )
+            influences = await self.thought_process.get_trading_influences(profile.id)
+            
+            # Convert persona to dict for improved loader
+            persona_dict = {
+                'name': persona.name,
+                'personality_traits': persona.personality_traits,
+                'trading_style': persona.trading_style.value,
+                'risk_tolerance': persona.risk_tolerance,
+                'favorite_assets': persona.favorite_assets,
+                'personality_type': self._get_personality_type(persona)
+            }
+            
+            # Enhanced trading context with all data
+            trading_context = {
+                'current_equity': current_equity,
+                'free_margin': available_balance,
+                'open_positions': len(positions),
+                'current_pnl': total_pnl,
+                'btc_price': market_data.get('btc_price', 0),
+                'eth_price': market_data.get('eth_price', 0),
+                'btc_change': market_data.get('btc_change', 0),
+                'eth_change': market_data.get('eth_change', 0),
+                'positions': positions,
+                'markets': self._load_markets_data(),
+                'win_rate': self._calculate_win_rate(recent_trades)
+            }
+            
+            # Get base prompt from improved system
+            base_prompt = self.improved_loader.build_system_prompt(
+                persona_dict,
+                trading_context, 
+                thought_summary,
+                influences
+            )
+        else:
+            # Fall back to old system
+            # Convert persona to dict for prompt loader
+            persona_dict = {
+                'name': persona.name,
+                'personality_traits': persona.personality_traits,
+                'trading_style': persona.trading_style.value,
+                'risk_tolerance': persona.risk_tolerance,
+                'favorite_assets': persona.favorite_assets,
+                'personality_type': self._get_personality_type(persona)
+            }
+            
+            # Enhanced trading context
+            trading_context = {
+                'current_equity': current_equity,
+                'free_margin': available_balance,
+                'open_positions': len(positions),
+                'current_pnl': total_pnl,
+                'btc_price': market_data.get('btc_price', 0),
+                'eth_price': market_data.get('eth_price', 0),
+                'btc_change': market_data.get('btc_change', 0),
+                'eth_change': market_data.get('eth_change', 0)
+            }
+            
+            # Get base prompt from modular system
+            base_prompt = self.prompt_loader.build_system_prompt(persona_dict, trading_context)
+        
+        # Add specific trading context
+        context_addition = f"""
 
-Current Market Data:
+## Current Trading Context
+
+### Market Data:
 - BTC: ${market_data.get('btc_price', 0):,.0f} ({market_data.get('btc_change', 0):+.1%} 24h)
 - ETH: ${market_data.get('eth_price', 0):,.0f} ({market_data.get('eth_change', 0):+.1%} 24h)
+- SOL: ${market_data.get('sol_price', 0):,.2f} ({market_data.get('sol_change', 0):+.1%} 24h)
 
-Your Portfolio:
+### Your Portfolio:
 - Available Balance: ${available_balance:,.2f}
 - Total P&L: ${total_pnl:+.2f}{equity_info}
 - Current Positions: {position_summary}
+- Pending Actions: {pending_summary}
 
-Pending Actions: {pending_summary}
+### Trading Performance:
+- Recent Successful Strategies: {len(recent_decisions)} profitable trades in the last 7 days
+- Win Rate: {self._calculate_win_rate(recent_trades)}%
 
-Recent Successful Strategies: {len(recent_decisions)} profitable trades in the last 7 days
+### Trading Instructions:
+Use the provided tools to execute your trading strategy. Follow the active trading guidelines:
+1. Check multiple markets (rotate through BTC, ETH, SOL, etc)
+2. Make decisive trades based on your personality and risk tolerance
+3. Set stop losses and take profits for risk management
+4. Aim for at least 1-2 trades per cycle when opportunities exist
 
-Use the provided tools to execute your trading strategy. Be decisive but risk-aware.
-Consider setting stop losses and take profits for risk management."""
+REMEMBER: You are an ACTIVE trader. Don't just observe - TRADE!"""
+        
+        system_prompt = base_prompt + context_addition
         
         # Call AI with tools
         messages = [
@@ -344,6 +462,18 @@ Consider setting stop losses and take profits for risk management."""
                 account_key=profile.private_key,
                 signer_key=profile.signer_key
             )
+            
+            # Publish trade decision events
+            if result.get("success") and tool_call.function.name in ["place_market_order", "place_limit_order"]:
+                await publish_event(create_trade_decision(
+                    profile_id=profile.id,
+                    trader_name=profile.persona.name,
+                    market=arguments.get("market", "Unknown"),
+                    action=arguments.get("side", "Unknown"),
+                    size=arguments.get("size", arguments.get("size_percent", 0)),
+                    reason=arguments.get("reason", "Trading decision"),
+                    confidence=arguments.get("confidence", 0.7)
+                ))
             
             return result
             
@@ -487,3 +617,112 @@ Consider setting stop losses and take profits for risk management."""
             parts.append(f"{len(summary.other_actions)} other")
         
         return f"{summary.pending} total ({', '.join(parts)})"
+    
+    def _get_personality_type(self, persona) -> str:
+        """Map persona to personality type."""
+        # Map based on personality traits or style
+        if any(trait in ["skeptical", "contrarian", "analytical"] for trait in persona.personality_traits):
+            return "cynical"
+        elif any(trait in ["impulsive", "optimistic", "enthusiastic"] for trait in persona.personality_traits):
+            return "leftCurve"
+        else:
+            return "midwit"
+    
+    def _calculate_win_rate(self, recent_trades: List) -> float:
+        """Calculate win rate from recent trades."""
+        if not recent_trades:
+            return 0.0
+        
+        winning_trades = sum(1 for trade in recent_trades if trade.get('pnl', 0) > 0)
+        return (winning_trades / len(recent_trades)) * 100 if recent_trades else 0.0
+    
+    def _load_markets_data(self) -> Dict:
+        """Load markets data from file."""
+        try:
+            from pathlib import Path
+            markets_path = Path("data/markets.json")
+            if markets_path.exists():
+                import json
+                with open(markets_path) as f:
+                    data = json.load(f)
+                    return data.get('markets', {})
+        except Exception as e:
+            self.logger.error(f"Error loading markets: {e}")
+        return {}
+    
+    async def _process_action_queue(self):
+        """Process pending actions from the trading queue."""
+        queue_stats = self.action_queue.get_queue_stats()
+        if queue_stats['total_actions'] == 0:
+            return
+            
+        self.logger.info(f"\nProcessing action queue: {queue_stats['ready_count']} ready actions")
+        
+        for profile in self.active_profiles:
+            # Get next action for this profile
+            action = await self.action_queue.get_next_action(profile.id)
+            
+            if action:
+                self.logger.info(f"   Executing {action.action_type.value} for {profile.persona.name}: {action.symbol}")
+                
+                try:
+                    # Convert queue action to tool call
+                    if action.action_type == ActionType.MARKET_ORDER:
+                        result = await self.trading_tools.execute_tool_call(
+                            tool_name="place_market_order",
+                            arguments={
+                                "market": action.symbol,
+                                "side": action.side,
+                                "size": action.size,
+                                "reason": action.reasoning
+                            },
+                            account_id=profile.id,
+                            persona_name=profile.persona.name,
+                            account_key=profile.private_key,
+                            signer_key=profile.signer_key
+                        )
+                    elif action.action_type == ActionType.LIMIT_ORDER:
+                        result = await self.trading_tools.execute_tool_call(
+                            tool_name="place_limit_order",
+                            arguments={
+                                "market": action.symbol,
+                                "side": action.side,
+                                "size": action.size,
+                                "price": action.price,
+                                "reason": action.reasoning
+                            },
+                            account_id=profile.id,
+                            persona_name=profile.persona.name,
+                            account_key=profile.private_key,
+                            signer_key=profile.signer_key
+                        )
+                    elif action.action_type == ActionType.CLOSE_POSITION:
+                        result = await self.trading_tools.execute_tool_call(
+                            tool_name="close_position",
+                            arguments={
+                                "market": action.symbol,
+                                "reason": action.reasoning
+                            },
+                            account_id=profile.id,
+                            persona_name=profile.persona.name,
+                            account_key=profile.private_key,
+                            signer_key=profile.signer_key
+                        )
+                    else:
+                        result = {"success": False, "error": f"Unsupported action type: {action.action_type}"}
+                    
+                    # Mark action as executed
+                    await self.action_queue.mark_executed(
+                        action.id,
+                        success=result.get("success", False),
+                        error=result.get("error")
+                    )
+                    
+                    if result.get("success"):
+                        self.logger.info(f"      ✓ Action executed successfully")
+                    else:
+                        self.logger.warning(f"      ✗ Action failed: {result.get('error')}")
+                        
+                except Exception as e:
+                    self.logger.error(f"      ✗ Error executing action: {e}")
+                    await self.action_queue.mark_executed(action.id, success=False, error=str(e))

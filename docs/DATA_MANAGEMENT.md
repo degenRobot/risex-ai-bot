@@ -26,15 +26,19 @@ The RISE AI Trading Bot manages data from multiple sources to create a comprehen
 - **trades.json**: Trade history with AI reasoning
 - **positions.json**: Position snapshots for P&L tracking
 - **equity_snapshots.json**: Historical equity data (200 entries per account)
-- **chat_sessions.json**: Conversation history and context
+- **chat_sessions.json**: Conversation history and context (deprecated - see chat/)
 - **trading_decisions.json**: AI decision logs with outcomes
 - **markets.json**: Cached market metadata
 - **thought_processes.json**: Shared state between chat and trading
+- **chat/{profile_id}.jsonl**: Persistent chat history (JSONL format, one file per profile)
+- **api_keys.json**: API key storage for admin authentication
 
 ### 4. In-Memory Caches
 - **GlobalMarketManager**: Singleton for market prices/changes
 - **EquityMonitor**: Recent equity values with 1h/24h deltas
 - **ThoughtProcess**: Active trading influences from chat
+- **EventBus**: Real-time event distribution for WebSocket connections
+- **ChatContextCache**: Token-counted message windows per profile
 
 ## Data Flow Architecture
 
@@ -51,6 +55,10 @@ The RISE AI Trading Bot manages data from multiple sources to create a comprehen
 │  │ RiseClient  │  │EquityMonitor │  │ ProfileChat        │    │
 │  │             │  │              │  │                    │    │
 │  └─────────────┘  └──────────────┘  └────────────────────┘    │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐    │
+│  │ EventBus    │  │ WebSocket    │  │ ProfileFactory     │    │
+│  │             │  │              │  │                    │    │
+│  └─────────────┘  └──────────────┘  └────────────────────┘    │
 └─────────────────────────────┬───────────────────────────────────┘
                               │
                               ▼
@@ -59,6 +67,10 @@ The RISE AI Trading Bot manages data from multiple sources to create a comprehen
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐    │
 │  │ JSONStorage │  │ Memory Cache │  │ ThoughtProcess     │    │
 │  │ (Files)     │  │ (Transient)  │  │ (Shared State)    │    │
+│  └─────────────┘  └──────────────┘  └────────────────────┘    │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐    │
+│  │ ChatStore   │  │ EventQueue   │  │ APIKeys           │    │
+│  │ (JSONL)     │  │ (AsyncQueue) │  │ (Hashed)          │    │
 │  └─────────────┘  └──────────────┘  └────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
                               │
@@ -137,9 +149,11 @@ async def start_polling(self, interval=60):
 ```
 
 ### 2. Event-Driven Updates
-- **On Trade Execution**: Update positions, calculate P&L
-- **On Chat Message**: Update thought processes, influences
-- **On Order Fill**: Check and update decision outcomes
+- **On Trade Execution**: Update positions, calculate P&L, publish trade events
+- **On Chat Message**: Update thought processes, influences, stream via WebSocket
+- **On Order Fill**: Check and update decision outcomes, publish order events
+- **On Equity Change**: Publish account.update events
+- **On Profile Update**: Publish profile.updated events
 
 ### 3. Reconciliation
 - **Equity vs Positions**: RPC equity is ground truth
@@ -210,6 +224,26 @@ GET /health
 - Separate log levels per component
 - Performance metrics (update times)
 
+## Recent Enhancements (Phase A-C)
+
+### WebSocket Real-Time Events
+- **EventBus**: Pub/sub system for real-time updates
+- **Event Types**: market.update, trade.*, account.update, chat.*, profile.*
+- **Deduplication**: Prevents echo of user's own messages via sender_id
+- **Subscriptions**: Global or profile-specific event streams
+
+### Chat Persistence
+- **JSONL Storage**: One file per profile for scalable chat history
+- **Token Management**: Context windows with tiktoken counting
+- **Streaming Support**: OpenRouter integration for chunk-by-chunk responses
+- **Message IDs**: Unique identifiers for deduplication and correlation
+
+### Profile Management
+- **ProfileFactory**: Centralized creation with RISE setup automation
+- **Initial Equity**: Baseline tracking for accurate P&L calculations
+- **Update API**: PUT endpoint for persona modifications
+- **Event Publishing**: Real-time notifications of profile changes
+
 ## Future Enhancements
 
 ### Near Term
@@ -246,15 +280,20 @@ API_TIMEOUT=30
 ### File Structure
 ```
 data/
-├── accounts.json           # Account registry
-├── equity_snapshots.json   # Historical equity
-├── markets.json           # Market metadata  
+├── accounts.json           # Account registry with personas
+├── equity_snapshots.json   # Historical equity (200 entries/account)
+├── markets.json           # Market metadata cache
 ├── positions.json         # Position snapshots
 ├── trades.json            # Trade history
-├── trading_decisions.json # AI decision log
-├── chat_sessions.json     # Conversation history
-├── thought_processes.json # Shared state
-└── pending_actions.json   # Action queue
+├── trading_decisions.json # AI decision log with outcomes
+├── chat_sessions.json     # Legacy chat history (deprecated)
+├── thought_processes.json # Shared state between chat/trading
+├── pending_actions.json   # Action queue for trading
+├── api_keys.json         # Admin API key storage
+├── chat/                 # Chat persistence directory
+│   ├── {profile_id}.jsonl # Per-profile chat history (JSONL)
+│   └── ...              # One file per profile
+└── tmp/                  # Temporary files for atomic writes
 ```
 
 ## Best Practices

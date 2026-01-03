@@ -14,6 +14,7 @@ from ..services.async_data_manager import AsyncDataManager
 from ..models import Account
 from ..pending_actions import ActionStatus
 from .profile_manager import router as admin_router
+from ..chat import chat_store, context_builder, streaming_handler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -46,6 +47,10 @@ active_traders = {}
 
 # Include admin router
 app.include_router(admin_router)
+
+# Include WebSocket router for realtime events
+from ..realtime.ws import router as websocket_router
+app.include_router(websocket_router)
 
 
 # Application startup
@@ -86,18 +91,33 @@ class ProfileSummary(BaseModel):
 class ChatRequest(BaseModel):
     """Chat request model."""
     message: str
-    chatHistory: Optional[str] = ""
+    chatHistory: Optional[str] = ""  # Deprecated, kept for backward compatibility
     sessionId: Optional[str] = None
+    user_id: Optional[str] = None  # For message deduplication
+    stream: bool = False  # Whether to use streaming response
 
 
 class ChatResponse(BaseModel):
     """Chat response model."""
     response: str
-    chatHistory: str
-    profileUpdates: List[str] = []
-    sessionId: str
-    context: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+    chatHistory: str  # Deprecated, kept for backward compatibility
+    message_id: Optional[str] = None  # ID of the assistant's response
+    profileUpdates: Optional[List[Dict]] = None
+    sessionId: Optional[str] = None
+    context: Optional[Dict] = None
+
+
+class ChatHistoryRequest(BaseModel):
+    """Request for chat history."""
+    limit: int = 50
+    after_id: Optional[str] = None
+
+
+class ChatHistoryResponse(BaseModel):
+    """Response with chat history."""
+    messages: List[Dict[str, Any]]
+    total: int
+    has_more: bool
 
 
 class ProfileDetail(BaseModel):
@@ -510,7 +530,7 @@ async def cancel_action(handle: str, action_id: str):
 
 @app.post("/api/profiles/{account_id}/chat", response_model=ChatResponse)
 async def chat_with_profile(account_id: str, chat_request: ChatRequest):
-    """Chat with a specific AI trading profile.
+    """Chat with a specific AI trading profile using server-side history.
     
     This endpoint allows users to have conversations with AI traders.
     The AI can update its market outlook, trading bias, and personality
@@ -519,24 +539,77 @@ async def chat_with_profile(account_id: str, chat_request: ChatRequest):
     Example conversation:
     - User: "Fed is going to drop rates, BTC will pump!"
     - AI: "That's bullish! I should reconsider my short position..."
+    
+    New features:
+    - Server-side chat history (no need to send chatHistory)
+    - Streaming responses (set stream=true)
+    - Message deduplication (provide user_id)
     """
     try:
-        result = await chat_service.chat_with_profile(
-            account_id=account_id,
-            user_message=chat_request.message,
-            chat_history=chat_request.chatHistory,
-            user_session_id=chat_request.sessionId
+        # Check if account exists
+        account = storage.get_account(account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        # Build context from server-side history
+        context_messages = await context_builder.build_context(
+            profile_id=account_id,
+            include_system=True
         )
         
-        if "error" in result:
-            raise HTTPException(status_code=404, detail=result["error"])
+        if chat_request.stream:
+            # Use streaming response
+            full_response = await streaming_handler.process_message_stream(
+                profile_id=account_id,
+                user_message=chat_request.message,
+                context_messages=context_messages,
+                user_id=chat_request.user_id
+            )
+        else:
+            # Non-streaming fallback (for tool calls)
+            # First save user message
+            await chat_store.append_msg(
+                profile_id=account_id,
+                role="user",
+                content=chat_request.message,
+                author=chat_request.user_id or "unknown"
+            )
+            
+            # Use existing chat service for tool-calling support
+            result = await chat_service.chat_with_profile(
+                account_id=account_id,
+                user_message=chat_request.message,
+                chat_history="",  # Empty since we use server-side history
+                user_session_id=chat_request.sessionId
+            )
+            
+            if "error" in result:
+                raise HTTPException(status_code=404, detail=result["error"])
+            
+            # Save AI response to history
+            await chat_store.append_msg(
+                profile_id=account_id,
+                role="assistant",
+                content=result["response"],
+                author="ai"
+            )
+            
+            full_response = result["response"]
+        
+        # For backward compatibility, generate a fake chat history string
+        recent_messages = await chat_store.load_recent(account_id, limit=10)
+        chat_history_str = "\n".join([
+            f"{msg.role}: {msg.content}"
+            for msg in recent_messages[-5:]  # Last 5 messages
+        ])
         
         return ChatResponse(
-            response=result["response"],
-            chatHistory=result["chatHistory"],
-            profileUpdates=result.get("profileUpdates", []),
-            sessionId=result["sessionId"],
-            context=result.get("context")
+            response=full_response,
+            chatHistory=chat_history_str,  # Deprecated but included for compatibility
+            message_id=None,  # Would need to track from streaming
+            profileUpdates=[],  # Tool calls handled separately
+            sessionId=chat_request.sessionId or account_id,
+            context={"message_count": len(recent_messages)}
         )
         
     except HTTPException:
@@ -544,6 +617,82 @@ async def chat_with_profile(account_id: str, chat_request: ChatRequest):
     except Exception as e:
         logger.error(f"Error in chat with profile {account_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
+
+
+@app.get("/api/profiles/{account_id}/chat/history", response_model=ChatHistoryResponse)
+async def get_chat_history(
+    account_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    after_id: Optional[str] = Query(None)
+):
+    """Get chat history for a profile.
+    
+    Returns messages in chronological order (oldest first).
+    Use after_id for pagination.
+    """
+    try:
+        # Check if account exists
+        account = storage.get_account(account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        # Load messages
+        messages = await chat_store.load_recent(
+            profile_id=account_id,
+            limit=limit,
+            after_id=after_id
+        )
+        
+        # Convert to response format
+        message_list = []
+        for msg in messages:
+            message_list.append({
+                "id": msg.message_id,
+                "role": msg.role,
+                "content": msg.content,
+                "author": msg.author,
+                "timestamp": msg.timestamp.isoformat(),
+                "metadata": msg.metadata
+            })
+        
+        # Get total count
+        total_count = await chat_store.get_message_count(account_id)
+        
+        return ChatHistoryResponse(
+            messages=message_list,
+            total=total_count,
+            has_more=len(messages) == limit  # If we got full limit, there might be more
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting chat history for {account_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/profiles/{account_id}/chat/history")
+async def clear_chat_history(account_id: str):
+    """Clear all chat history for a profile.
+    
+    WARNING: This action cannot be undone.
+    """
+    try:
+        # Check if account exists
+        account = storage.get_account(account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        # Clear history
+        await chat_store.clear_chat(account_id)
+        
+        return {"message": f"Chat history cleared for profile {account_id}"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error clearing chat history for {account_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/profiles/{account_id}/summary")

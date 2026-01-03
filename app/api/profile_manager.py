@@ -2,7 +2,7 @@
 
 from typing import Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Header
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 import secrets
 import uuid
 from datetime import datetime
@@ -12,6 +12,10 @@ from ..services.storage import JSONStorage
 from ..services.rise_client import RiseClient
 from ..models import Account, Persona, TradingStyle, Trade
 from ..config import settings
+from ..profiles.factory import ProfileFactory, ProfileCreationError
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -39,6 +43,33 @@ class CreateProfileResponse(BaseModel):
     persona: Dict
     initial_deposit: float
     message: str
+
+
+class PersonaUpdate(BaseModel):
+    """Updatable persona fields."""
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    bio: Optional[str] = Field(None, min_length=1, max_length=500)
+    trading_style: Optional[TradingStyle] = None
+    risk_tolerance: Optional[float] = Field(None, ge=0.0, le=1.0)
+    favorite_assets: Optional[list[str]] = Field(None, max_items=10)
+    personality_traits: Optional[list[str]] = Field(None, max_items=20)
+    
+    @validator('favorite_assets')
+    def validate_assets(cls, v):
+        if v is not None:
+            # Validate asset symbols
+            valid_assets = ["BTC", "ETH", "SOL", "LINK", "UNI", "AAVE", "SNX", "CRV"]
+            for asset in v:
+                if asset not in valid_assets:
+                    raise ValueError(f"Invalid asset: {asset}. Must be one of {valid_assets}")
+        return v
+
+
+class UpdateProfileRequest(BaseModel):
+    """Request to update profile attributes."""
+    persona_update: Optional[PersonaUpdate] = None
+    is_active: Optional[bool] = None
+    deposit_amount: Optional[float] = None  # For tracking only
 
 
 class APIKeyConfig:
@@ -77,97 +108,93 @@ async def create_profile(
     2. Creates the persona based on personality type
     3. Registers signer on RISE
     4. Deposits initial USDC
-    5. Activates the profile for trading
+    5. Fetches initial equity for P&L tracking
+    6. Activates the profile for trading
     
     Requires API key authentication in X-API-Key header.
     """
     try:
-        # Generate new keys
-        account = EthAccount.create()
-        signer = EthAccount.create()
+        # Use ProfileFactory for centralized creation logic
+        factory = ProfileFactory()
         
-        # Map personality type to speech style
-        speech_styles = {
-            "cynical": "financialAdvisor",
-            "leftCurve": "smol",
-            "midwit": "ct"
-        }
-        
-        # Create persona
-        persona = Persona(
+        profile_data = await factory.create_profile(
             name=request.name,
             handle=request.handle,
             bio=request.bio,
-            trading_style=request.trading_style,
+            trading_style=request.trading_style.value,
             risk_tolerance=request.risk_tolerance,
+            personality_type=request.personality_type,
+            initial_deposit=request.initial_deposit,
             favorite_assets=request.favorite_assets,
-            personality_traits=request.personality_traits or [
-                "unique", "programmatic", "adaptive"
-            ],
-            sample_posts=[]  # Will be generated from personality
+            personality_traits=request.personality_traits
         )
         
-        # Create account object
-        account_obj = Account(
-            id=str(uuid.uuid4()),
-            address=account.address,
-            private_key=account.key.hex(),
-            signer_key=signer.key.hex(),
-            persona=persona,
-            is_active=True
-        )
+        # Success message with equity info
+        equity_info = ""
+        if profile_data.get("initial_equity"):
+            equity_info = f", initial equity: ${profile_data['initial_equity']:.2f}"
         
-        # Save to storage
-        storage.save_account(account_obj)
-        
-        # Setup on RISE (register signer and deposit)
-        async with RiseClient() as client:
-            try:
-                # Register signer
-                await client.register_signer(
-                    account_key=account.key.hex(),
-                    signer_key=signer.key.hex()
-                )
-                
-                # Update registration status
-                account_obj.is_registered = True
-                account_obj.registered_at = datetime.utcnow()
-                storage.save_account(account_obj)
-                
-                # Deposit initial USDC
-                if request.initial_deposit > 0:
-                    tx_hash = await client.deposit_usdc(
-                        account_key=account.key.hex(),
-                        amount=request.initial_deposit
-                    )
-                    # Update deposit status
-                    account_obj.has_deposited = True
-                    account_obj.deposited_at = datetime.utcnow()
-                    account_obj.deposit_amount = request.initial_deposit
-                    storage.save_account(account_obj)
-                    
-                    message = f"Profile created and funded with {request.initial_deposit} USDC (tx: {tx_hash})"
-                else:
-                    message = "Profile created (no initial deposit)"
-                    
-            except Exception as e:
-                # If RISE setup fails, still return the created profile
-                message = f"Profile created but RISE setup failed: {str(e)}"
+        message = f"Profile created and funded with {request.initial_deposit} USDC{equity_info}"
         
         return CreateProfileResponse(
-            profile_id=account_obj.id,
-            address=account.address,
-            signer_address=signer.address,
-            persona=persona.model_dump(),
+            profile_id=profile_data["profile_id"],
+            address=profile_data["address"],
+            signer_address=profile_data["signer_address"],
+            persona=profile_data["persona"],
             initial_deposit=request.initial_deposit,
             message=message
         )
         
+    except ProfileCreationError as e:
+        # Profile creation specific error
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
     except Exception as e:
+        # Generic error
         raise HTTPException(
             status_code=500,
             detail=f"Failed to create profile: {str(e)}"
         )
+
+
+@router.get("/profiles/{profile_id}")
+async def get_admin_profile(
+    profile_id: str,
+    api_key: str = Depends(verify_api_key)
+) -> Dict:
+    """Get detailed profile information (admin view with sensitive data)."""
+    account = storage.get_account(profile_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    
+    # Get current equity if available
+    current_equity = None
+    try:
+        from ..services.equity_monitor import EquityMonitor
+        equity_monitor = EquityMonitor()
+        equity_data = await equity_monitor.fetch_equity(account.address)
+        if equity_data and "equity" in equity_data:
+            current_equity = equity_data["equity"]
+    except Exception as e:
+        logger.warning(f"Could not fetch equity: {e}")
+    
+    return {
+        "profile_id": account.id,
+        "address": account.address,
+        "signer_address": EthAccount.from_key(account.signer_key).address,
+        "persona": account.persona.model_dump() if account.persona else None,
+        "is_active": account.is_active,
+        "is_registered": account.is_registered,
+        "has_deposited": account.has_deposited,
+        "deposit_amount": account.deposit_amount,
+        "initial_equity": account.initial_equity,
+        "current_equity": current_equity,
+        "created_at": account.created_at.isoformat() if account.created_at else None,
+        "registered_at": account.registered_at.isoformat() if account.registered_at else None,
+        "deposited_at": account.deposited_at.isoformat() if account.deposited_at else None
+    }
 
 
 @router.get("/profiles")
@@ -193,6 +220,85 @@ async def list_admin_profiles(
     }
 
 
+@router.put("/profiles/{profile_id}")
+async def update_profile(
+    profile_id: str,
+    request: UpdateProfileRequest,
+    api_key: str = Depends(verify_api_key)
+) -> Dict:
+    """
+    Update an existing profile's editable attributes.
+    
+    Editable fields:
+    - Persona attributes (bio, trading_style, risk_tolerance, etc.)
+    - Active status
+    - Deposit amount (for tracking purposes only)
+    
+    Non-editable fields (for security):
+    - Address, private keys, signer key
+    - Profile ID
+    - Registration status
+    """
+    try:
+        account = storage.get_account(profile_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        # Update persona if provided
+        if request.persona_update:
+            if account.persona:
+                # Update existing persona fields
+                update_data = request.persona_update.model_dump(exclude_unset=True)
+                for field, value in update_data.items():
+                    if hasattr(account.persona, field):
+                        setattr(account.persona, field, value)
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot update persona - profile has no persona"
+                )
+        
+        # Update account fields
+        if request.is_active is not None:
+            account.is_active = request.is_active
+            
+        if request.deposit_amount is not None:
+            # Only update tracking amount, doesn't affect on-chain balance
+            account.deposit_amount = request.deposit_amount
+        
+        # Save updated account
+        storage.save_account(account)
+        
+        # Publish update event
+        from ..realtime.bus import BUS
+        from ..realtime.events import RealtimeEvent, EventType
+        
+        update_event = RealtimeEvent(
+            type=EventType.PROFILE_UPDATED,
+            profile_id=profile_id,
+            payload={
+                "profile_id": profile_id,
+                "updated_fields": list(request.model_dump(exclude_unset=True).keys()),
+                "is_active": account.is_active
+            }
+        )
+        await BUS.publish(update_event)
+        
+        return {
+            "message": f"Profile {profile_id} updated successfully",
+            "profile_id": profile_id,
+            "updated_fields": list(request.model_dump(exclude_unset=True).keys())
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update profile: {str(e)}"
+        )
+
+
 @router.delete("/profiles/{profile_id}")
 async def delete_profile(
     profile_id: str,
@@ -206,6 +312,21 @@ async def delete_profile(
     # Deactivate instead of delete
     account.is_active = False
     storage.save_account(account)
+    
+    # Publish deactivation event
+    from ..realtime.bus import BUS
+    from ..realtime.events import RealtimeEvent, EventType
+    
+    delete_event = RealtimeEvent(
+        type=EventType.PROFILE_UPDATED,
+        profile_id=profile_id,
+        payload={
+            "profile_id": profile_id,
+            "is_active": False,
+            "action": "deactivated"
+        }
+    )
+    await BUS.publish(delete_event)
     
     return {"message": f"Profile {profile_id} deactivated"}
 

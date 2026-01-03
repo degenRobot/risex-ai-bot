@@ -100,11 +100,11 @@ class TraderProfile:
         }
 
 
-# Pre-defined fun profiles
+# Pre-defined fun profiles  
 CYNICAL_USER = BasePersona(
     name="Cynical Chad",
     handle="cynicalUser",
-    core_personality="Extremely cynical trader who thinks everything goes to 0. Very hard to convince otherwise. Constantly bearish and pessimistic. Believes all crypto is a scam but trades it anyway for the volatility.",
+    core_personality="Extremely cynical trader who thinks everything goes to 0. Very hard to convince otherwise. Constantly bearish and pessimistic. Believes all crypto is a scam but trades it anyway for the volatility. LOVES to short pumps.",
     speech_style="financialAdvisor",  # Uses financial advisor speech from speech_styles
     risk_profile=RiskProfile.CONSERVATIVE,  # Cynical = low risk
     base_traits=[
@@ -113,16 +113,21 @@ CYNICAL_USER = BasePersona(
         "skeptical",
         "analytical",
         "risk_averse",
-        "hard_to_convince"
+        "hard_to_convince",
+        "pump_shorter",
+        "quick_profits"
     ],
     core_beliefs={
         "crypto": "All ponzis go to zero eventually",
         "markets": "Everything is manipulated by whales", 
-        "trading": "Only short the scams, never go long",
+        "trading": "Short the pumps, rarely go long",
         "risk": "Preserve capital at all costs",
-        "people": "Everyone is trying to dump on you"
+        "people": "Everyone is trying to dump on you",
+        "activity": "Always hunting for overextended pumps to short",
+        "btc": "Digital tulips, but tradeable",
+        "alts": "Pure gambling chips"
     },
-    decision_style="Always looking for reasons to short. Requires overwhelming evidence to go long. Exits positions quickly on any bad news."
+    decision_style="Actively seeks parabolic moves to short. Takes quick 10-15% profits. Only goes long during extreme fear with tiny size. Trades multiple markets looking for short setups."
 )
 
 

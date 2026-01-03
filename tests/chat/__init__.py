@@ -1,0 +1,1 @@
+"""Chat tests for RiseX AI Bot."""
