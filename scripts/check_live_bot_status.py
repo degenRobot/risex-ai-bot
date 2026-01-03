@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Check live bot status via API."""
 
-import asyncio
 import json
+
 import requests
 
 
@@ -40,15 +40,15 @@ def check_status():
                     detail = detail_resp.json()
                     
                     # Show positions
-                    if detail.get('positions'):
+                    if detail.get("positions"):
                         print("  Positions:")
-                        for pos in detail['positions']:
+                        for pos in detail["positions"]:
                             print(f"    - {pos['market']}: {pos['size']} @ ${pos['avg_price']:,.2f}")
                     
                     # Show recent decisions
-                    if detail.get('recent_decisions'):
+                    if detail.get("recent_decisions"):
                         print("  Recent Decisions:")
-                        for dec in detail['recent_decisions'][:3]:
+                        for dec in detail["recent_decisions"][:3]:
                             print(f"    - {dec['timestamp']}: {dec['decision']}")
             except:
                 pass
@@ -63,11 +63,11 @@ def check_status():
         result = subprocess.run(
             ["fly", "logs", "-a", "risex-trading-bot", "-n"],
             capture_output=True,
-            text=True
+            text=True,
         )
-        logs = result.stdout.split('\n')[-20:]  # Last 20 lines
+        logs = result.stdout.split("\n")[-20:]  # Last 20 lines
         for line in logs:
-            if any(keyword in line for keyword in ['ERROR', 'WARNING', 'place_market_order', 'PlaceOrder reverted']):
+            if any(keyword in line for keyword in ["ERROR", "WARNING", "place_market_order", "PlaceOrder reverted"]):
                 print(line)
     except:
         print("Could not fetch logs")

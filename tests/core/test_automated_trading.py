@@ -6,10 +6,11 @@ import os
 import signal
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from app.core.account_manager import AccountManager
 from app.core.trading_loop import TradingBot
@@ -64,9 +65,9 @@ async def test_automated_trading():
     
     # Check configuration
     has_openrouter = bool(os.getenv("OPENROUTER_API_KEY"))
-    print(f"📋 Configuration:")
+    print("📋 Configuration:")
     print(f"   OpenRouter AI: {'✅' if has_openrouter else '❌'} {'Available' if has_openrouter else 'Missing API key'}")
-    print(f"   RISE API: ✅ Available")
+    print("   RISE API: ✅ Available")
     print()
     
     # Step 1: Setup accounts
@@ -87,7 +88,7 @@ async def test_automated_trading():
     bot = TradingBot(
         interval_seconds=30,  # 30 seconds for testing
         max_position_usd=10.0,  # Small positions for testing
-        dry_run=True  # Safety first!
+        dry_run=True,  # Safety first!
     )
     
     print("   ✅ Trading bot initialized (DRY RUN mode)")
@@ -110,7 +111,7 @@ async def test_automated_trading():
             # Test market data fetch
             await bot._update_market_cache()
             market_data = bot._get_current_market_data()
-            print(f"   📊 Market Data:")
+            print("   📊 Market Data:")
             print(f"      BTC: ${market_data['btc_price']:,.0f} ({market_data['btc_change']:+.1%})")
             print(f"      ETH: ${market_data['eth_price']:,.0f} ({market_data['eth_change']:+.1%})")
             print()
@@ -198,15 +199,15 @@ async def test_automated_trading():
     print("📊 Test Results:")
     print(f"   ✅ {iteration_count} trading iterations completed")
     print(f"   ✅ {len(bot.active_accounts)} AI traders processed")
-    print(f"   ✅ Market data integration working")
-    print(f"   ✅ Social activity simulation working")
+    print("   ✅ Market data integration working")
+    print("   ✅ Social activity simulation working")
     if has_openrouter:
-        print(f"   ✅ AI decision making working")
+        print("   ✅ AI decision making working")
     else:
-        print(f"   ⚠️  AI decisions limited (add OPENROUTER_API_KEY)")
-    print(f"   ✅ Position tracking working")
-    print(f"   ✅ P&L calculation working")
-    print(f"   ✅ Dry run mode working")
+        print("   ⚠️  AI decisions limited (add OPENROUTER_API_KEY)")
+    print("   ✅ Position tracking working")
+    print("   ✅ P&L calculation working")
+    print("   ✅ Dry run mode working")
     print()
     print("🚀 Ready for live automated trading!")
     print()
@@ -228,7 +229,7 @@ async def run_continuous_bot():
     bot = TradingBot(
         interval_seconds=60,  # 1 minute
         max_position_usd=50.0,
-        dry_run=True
+        dry_run=True,
     )
     
     try:

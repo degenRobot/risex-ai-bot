@@ -65,6 +65,10 @@ if [ ! -f /data/accounts.json ]; then\n\
     echo "{}" > /data/chat_sessions.json\n\
     echo "{}" > /data/equity_snapshots.json\n\
     echo "{}" > /data/pending_actions.json\n\
+    echo "{}" > /data/positions.json\n\
+    echo "{}" > /data/profile_updates.json\n\
+    echo "{}" > /data/trading_data.json\n\
+    echo "{}" > /data/chat_influence_results.json\n\
     # Copy markets.json if it exists in app directory\n\
     if [ -f /app/data/markets.json ]; then\n\
         cp /app/data/markets.json /data/\n\

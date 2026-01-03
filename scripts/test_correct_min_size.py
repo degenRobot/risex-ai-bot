@@ -2,17 +2,15 @@
 """Test opening positions with correct minimum sizes from markets.json."""
 
 import asyncio
-import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 # Add project root to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from app.core.market_manager import get_market_manager
 from app.services.rise_client import RiseClient
 from app.services.storage import JSONStorage
-from app.services.equity_monitor import get_equity_monitor
-from app.core.market_manager import get_market_manager
 
 
 async def test_positions_with_min_sizes():
@@ -28,7 +26,7 @@ async def test_positions_with_min_sizes():
     accounts = storage.get_all_accounts()
     midwit = None
     for acc_id, acc in accounts.items():
-        if acc['persona']['name'] == "Midwit McGee":
+        if acc["persona"]["name"] == "Midwit McGee":
             midwit = acc
             break
     
@@ -48,8 +46,8 @@ async def test_positions_with_min_sizes():
         if not market_data:
             continue
             
-        min_size = float(market_data['min_size'])
-        price = float(market_data.get('index_price', market_data.get('last_price', 0)))
+        min_size = float(market_data["min_size"])
+        price = float(market_data.get("index_price", market_data.get("last_price", 0)))
         
         print(f"\n{market['symbol']} Market:")
         print(f"  Price: ${price:.4f}")
@@ -67,12 +65,12 @@ async def test_positions_with_min_sizes():
             
             try:
                 result = await rise_client.place_market_order(
-                    account_key=midwit['private_key'],
-                    signer_key=midwit['signer_key'],
+                    account_key=midwit["private_key"],
+                    signer_key=midwit["signer_key"],
                     market_id=market["id"],
                     size=size,
                     side="buy",
-                    reduce_only=False
+                    reduce_only=False,
                 )
                 
                 if result and "data" in result and result["data"].get("order_id"):
@@ -85,28 +83,28 @@ async def test_positions_with_min_sizes():
                     positions_resp = await rise_client._request(
                         "GET",
                         "/v1/positions",
-                        params={"account": midwit['address']}
+                        params={"account": midwit["address"]},
                     )
                     
                     if positions_resp.get("data", {}).get("positions"):
                         for pos in positions_resp["data"]["positions"]:
-                            if int(pos['market_id']) == market["id"]:
-                                actual_size = float(pos['size']) / 1e18
-                                avg_price = float(pos['avg_entry_price']) / 1e18
+                            if int(pos["market_id"]) == market["id"]:
+                                actual_size = float(pos["size"]) / 1e18
+                                avg_price = float(pos["avg_entry_price"]) / 1e18
                                 print(f"    📊 Position: {actual_size:.6f} @ ${avg_price:.4f}")
                                 break
                     
                     # Success - move to next market
                     break
                 else:
-                    print(f"    ❌ Failed")
+                    print("    ❌ Failed")
                     
             except Exception as e:
                 error_msg = str(e)
                 if "reverted with status 0" in error_msg:
-                    print(f"    ❌ Order reverted")
+                    print("    ❌ Order reverted")
                 elif "insufficient" in error_msg.lower():
-                    print(f"    ❌ Insufficient balance")
+                    print("    ❌ Insufficient balance")
                 else:
                     print(f"    ❌ Error: {error_msg[:60]}...")
     
@@ -116,17 +114,17 @@ async def test_positions_with_min_sizes():
     positions_resp = await rise_client._request(
         "GET",
         "/v1/positions",
-        params={"account": midwit['address']}
+        params={"account": midwit["address"]},
     )
     
     if positions_resp.get("data", {}).get("positions"):
         for pos in positions_resp["data"]["positions"]:
-            market_id = int(pos['market_id'])
+            market_id = int(pos["market_id"])
             market_info = market_manager.get_market_by_id(market_id)
-            symbol = market_info['base_asset_symbol'] if market_info else f"Market{market_id}"
-            size = float(pos['size']) / 1e18
-            avg_price = float(pos['avg_entry_price']) / 1e18
-            side = pos['side']
+            symbol = market_info["base_asset_symbol"] if market_info else f"Market{market_id}"
+            size = float(pos["size"]) / 1e18
+            avg_price = float(pos["avg_entry_price"]) / 1e18
+            side = pos["side"]
             print(f"  - {symbol}: {size:.6f} ({side}) @ ${avg_price:.2f}")
     
     await rise_client.close()

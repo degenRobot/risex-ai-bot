@@ -1,13 +1,12 @@
 """Trading action queue system for managing and prioritizing trades."""
 
 import asyncio
-import time
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, field
-from enum import Enum
-import logging
 import json
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +44,7 @@ class PendingAction:
     not_before: Optional[datetime] = None
     expires_at: Optional[datetime] = None
     created_at: datetime = field(default_factory=datetime.now)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     attempts: int = 0
     last_error: Optional[str] = None
     
@@ -69,45 +68,45 @@ class PendingAction:
             return datetime.now() > self.expires_at
         return False
         
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for storage."""
         return {
-            'id': self.id,
-            'profile_id': self.profile_id,
-            'action_type': self.action_type.value,
-            'priority': self.priority.value,
-            'symbol': self.symbol,
-            'side': self.side,
-            'size': self.size,
-            'price': self.price,
-            'reasoning': self.reasoning,
-            'not_before': self.not_before.isoformat() if self.not_before else None,
-            'expires_at': self.expires_at.isoformat() if self.expires_at else None,
-            'created_at': self.created_at.isoformat(),
-            'metadata': self.metadata,
-            'attempts': self.attempts,
-            'last_error': self.last_error
+            "id": self.id,
+            "profile_id": self.profile_id,
+            "action_type": self.action_type.value,
+            "priority": self.priority.value,
+            "symbol": self.symbol,
+            "side": self.side,
+            "size": self.size,
+            "price": self.price,
+            "reasoning": self.reasoning,
+            "not_before": self.not_before.isoformat() if self.not_before else None,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "created_at": self.created_at.isoformat(),
+            "metadata": self.metadata,
+            "attempts": self.attempts,
+            "last_error": self.last_error,
         }
         
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'PendingAction':
+    def from_dict(cls, data: dict[str, Any]) -> "PendingAction":
         """Create from dictionary."""
         return cls(
-            id=data['id'],
-            profile_id=data['profile_id'],
-            action_type=ActionType(data['action_type']),
-            priority=ActionPriority(data['priority']),
-            symbol=data['symbol'],
-            side=data['side'],
-            size=data.get('size'),
-            price=data.get('price'),
-            reasoning=data.get('reasoning', ''),
-            not_before=datetime.fromisoformat(data['not_before']) if data.get('not_before') else None,
-            expires_at=datetime.fromisoformat(data['expires_at']) if data.get('expires_at') else None,
-            created_at=datetime.fromisoformat(data['created_at']),
-            metadata=data.get('metadata', {}),
-            attempts=data.get('attempts', 0),
-            last_error=data.get('last_error')
+            id=data["id"],
+            profile_id=data["profile_id"],
+            action_type=ActionType(data["action_type"]),
+            priority=ActionPriority(data["priority"]),
+            symbol=data["symbol"],
+            side=data["side"],
+            size=data.get("size"),
+            price=data.get("price"),
+            reasoning=data.get("reasoning", ""),
+            not_before=datetime.fromisoformat(data["not_before"]) if data.get("not_before") else None,
+            expires_at=datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None,
+            created_at=datetime.fromisoformat(data["created_at"]),
+            metadata=data.get("metadata", {}),
+            attempts=data.get("attempts", 0),
+            last_error=data.get("last_error"),
         )
 
 
@@ -116,22 +115,22 @@ class TradingActionQueue:
     
     def __init__(self, storage_path: str = "data/pending_actions.json"):
         self.storage_path = storage_path
-        self._actions: Dict[str, PendingAction] = {}
+        self._actions: dict[str, PendingAction] = {}
         self._lock = asyncio.Lock()
         self._load_actions()
         
         # Throttling settings
         self.min_interval_seconds = 5  # Minimum seconds between actions
         self.max_actions_per_minute = 10
-        self.last_execution_times: Dict[str, datetime] = {}
-        self.execution_history: List[datetime] = []
+        self.last_execution_times: dict[str, datetime] = {}
+        self.execution_history: list[datetime] = []
         
     def _load_actions(self):
         """Load pending actions from storage."""
         try:
-            with open(self.storage_path, 'r') as f:
+            with open(self.storage_path) as f:
                 data = json.load(f)
-                for action_data in data.get('actions', []):
+                for action_data in data.get("actions", []):
                     action = PendingAction.from_dict(action_data)
                     self._actions[action.id] = action
             logger.info(f"Loaded {len(self._actions)} pending actions")
@@ -144,10 +143,10 @@ class TradingActionQueue:
         """Save pending actions to storage."""
         try:
             data = {
-                'actions': [action.to_dict() for action in self._actions.values()],
-                'last_updated': datetime.now().isoformat()
+                "actions": [action.to_dict() for action in self._actions.values()],
+                "last_updated": datetime.now().isoformat(),
             }
-            with open(self.storage_path, 'w') as f:
+            with open(self.storage_path, "w") as f:
                 json.dump(data, f, indent=2)
         except Exception as e:
             logger.error(f"Error saving pending actions: {e}")
@@ -170,7 +169,7 @@ class TradingActionQueue:
             logger.info(f"Added action: {action.id} - {action.symbol} {action.side} for {action.profile_id}")
             return True
             
-    async def get_ready_actions(self, profile_id: Optional[str] = None) -> List[PendingAction]:
+    async def get_ready_actions(self, profile_id: Optional[str] = None) -> list[PendingAction]:
         """Get actions ready for execution, optionally filtered by profile."""
         async with self._lock:
             ready_actions = []
@@ -275,31 +274,31 @@ class TradingActionQueue:
                 self._save_actions()
                 logger.info(f"Cleared {len(to_remove)} actions for profile {profile_id}")
                 
-    def get_queue_stats(self) -> Dict[str, Any]:
+    def get_queue_stats(self) -> dict[str, Any]:
         """Get statistics about the queue."""
         stats = {
-            'total_actions': len(self._actions),
-            'by_priority': {},
-            'by_type': {},
-            'by_profile': {},
-            'ready_count': 0
+            "total_actions": len(self._actions),
+            "by_priority": {},
+            "by_type": {},
+            "by_profile": {},
+            "ready_count": 0,
         }
         
         for action in self._actions.values():
             # Count by priority
             priority = action.priority.name
-            stats['by_priority'][priority] = stats['by_priority'].get(priority, 0) + 1
+            stats["by_priority"][priority] = stats["by_priority"].get(priority, 0) + 1
             
             # Count by type
             action_type = action.action_type.name
-            stats['by_type'][action_type] = stats['by_type'].get(action_type, 0) + 1
+            stats["by_type"][action_type] = stats["by_type"].get(action_type, 0) + 1
             
             # Count by profile
-            stats['by_profile'][action.profile_id] = stats['by_profile'].get(action.profile_id, 0) + 1
+            stats["by_profile"][action.profile_id] = stats["by_profile"].get(action.profile_id, 0) + 1
             
             # Count ready
             if action.is_ready():
-                stats['ready_count'] += 1
+                stats["ready_count"] += 1
                 
         return stats
         

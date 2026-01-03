@@ -2,13 +2,11 @@
 
 import asyncio
 import json
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
-from pathlib import Path
-from dataclasses import dataclass, asdict
 import uuid
-
-from .storage import JSONStorage
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Optional
 
 
 @dataclass
@@ -22,20 +20,20 @@ class ThoughtEntry:
     content: str     # What happened or was realized
     impact: Optional[str] = None  # How it affects future decisions
     confidence: float = 0.5  # Confidence in this thought (0-1)
-    details: Optional[Dict] = None  # Additional context
-    related_entries: List[str] = None  # IDs of related thoughts
+    details: Optional[dict] = None  # Additional context
+    related_entries: list[str] = None  # IDs of related thoughts
     
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convert to dictionary for storage."""
         data = asdict(self)
-        data['timestamp'] = self.timestamp.isoformat()
-        data['related_entries'] = self.related_entries or []
+        data["timestamp"] = self.timestamp.isoformat()
+        data["related_entries"] = self.related_entries or []
         return data
     
     @classmethod
-    def from_dict(cls, data: Dict) -> 'ThoughtEntry':
+    def from_dict(cls, data: dict) -> "ThoughtEntry":
         """Create from dictionary."""
-        data['timestamp'] = datetime.fromisoformat(data['timestamp'])
+        data["timestamp"] = datetime.fromisoformat(data["timestamp"])
         return cls(**data)
 
 
@@ -47,7 +45,7 @@ class ThoughtProcessManager:
         self.storage_path.mkdir(exist_ok=True)
         self.thoughts_file = self.storage_path / "thought_processes.json"
         self._lock = asyncio.Lock()
-        self._thoughts_cache: Dict[str, List[ThoughtEntry]] = {}
+        self._thoughts_cache: dict[str, list[ThoughtEntry]] = {}
         
     async def add_entry(
         self,
@@ -57,8 +55,8 @@ class ThoughtProcessManager:
         content: str,
         impact: Optional[str] = None,
         confidence: float = 0.5,
-        details: Optional[Dict] = None,
-        related_entries: Optional[List[str]] = None
+        details: Optional[dict] = None,
+        related_entries: Optional[list[str]] = None,
     ) -> ThoughtEntry:
         """Add new thought process entry."""
         
@@ -73,7 +71,7 @@ class ThoughtProcessManager:
             impact=impact,
             confidence=confidence,
             details=details,
-            related_entries=related_entries or []
+            related_entries=related_entries or [],
         )
         
         async with self._lock:
@@ -102,8 +100,8 @@ class ThoughtProcessManager:
         self,
         account_id: str,
         hours: int = 24,
-        entry_types: Optional[List[str]] = None
-    ) -> List[ThoughtEntry]:
+        entry_types: Optional[list[str]] = None,
+    ) -> list[ThoughtEntry]:
         """Get recent thought process entries."""
         
         # Check cache first
@@ -132,7 +130,7 @@ class ThoughtProcessManager:
         self,
         account_id: str,
         for_purpose: str = "trading_decision",
-        max_entries: int = 20
+        max_entries: int = 20,
     ) -> str:
         """Summarize recent thoughts for AI context."""
         
@@ -142,7 +140,7 @@ class ThoughtProcessManager:
             thoughts = await self.get_recent_thoughts(
                 account_id,
                 hours=48,
-                entry_types=["chat_influence", "trading_decision", "market_observation"]
+                entry_types=["chat_influence", "trading_decision", "market_observation"],
             )
         else:  # chat_response
             # For chat, include all recent thoughts
@@ -189,8 +187,8 @@ class ThoughtProcessManager:
     async def get_trading_influences(
         self,
         account_id: str,
-        hours: int = 24
-    ) -> List[Dict]:
+        hours: int = 24,
+    ) -> list[dict]:
         """Get thoughts that should influence trading decisions."""
         
         thoughts = await self.get_recent_thoughts(account_id, hours=hours)
@@ -217,7 +215,7 @@ class ThoughtProcessManager:
                     "impact": thought.impact,
                     "source": thought.source,
                     "weight": influence_weight,
-                    "timestamp": thought.timestamp.isoformat()
+                    "timestamp": thought.timestamp.isoformat(),
                 })
         
         # Sort by weight (most influential first)
@@ -228,7 +226,7 @@ class ThoughtProcessManager:
     async def link_thoughts(
         self,
         thought_id: str,
-        related_thought_ids: List[str]
+        related_thought_ids: list[str],
     ):
         """Link related thoughts together."""
         async with self._lock:
@@ -246,16 +244,16 @@ class ThoughtProcessManager:
             
             await self._save_thoughts(thoughts)
     
-    async def _load_thoughts(self) -> Dict[str, List[Dict]]:
+    async def _load_thoughts(self) -> dict[str, list[dict]]:
         """Load thoughts from storage."""
         if self.thoughts_file.exists():
-            with open(self.thoughts_file, 'r') as f:
+            with open(self.thoughts_file) as f:
                 return json.load(f)
         return {}
     
-    async def _save_thoughts(self, thoughts: Dict[str, List[Dict]]):
+    async def _save_thoughts(self, thoughts: dict[str, list[dict]]):
         """Save thoughts to storage."""
-        with open(self.thoughts_file, 'w') as f:
+        with open(self.thoughts_file, "w") as f:
             json.dump(thoughts, f, indent=2)
 
 
@@ -265,13 +263,13 @@ THOUGHT_EXAMPLES = {
         "bullish_insight": {
             "content": "User shared insight about Fed rate cuts being bullish for BTC",
             "impact": "Reconsidering bearish stance on BTC, may look for long entries",
-            "confidence": 0.7
+            "confidence": 0.7,
         },
         "market_warning": {
             "content": "User warned about potential market crash due to regulatory news",
             "impact": "Will be more cautious with position sizing today",
-            "confidence": 0.6
-        }
+            "confidence": 0.6,
+        },
     },
     "trading_decision": {
         "open_position": {
@@ -282,8 +280,8 @@ THOUGHT_EXAMPLES = {
                 "asset": "BTC",
                 "size": 0.1,
                 "price": 95000,
-                "stop_loss": 93000
-            }
+                "stop_loss": 93000,
+            },
         },
         "close_position": {
             "content": "Closed BTC long at $98k for 3% profit",
@@ -294,20 +292,20 @@ THOUGHT_EXAMPLES = {
                 "size": 0.1,
                 "price": 98000,
                 "pnl": 300,
-                "outcome": "profit"
-            }
-        }
+                "outcome": "profit",
+            },
+        },
     },
     "market_observation": {
         "price_action": {
             "content": "BTC pumped 5% immediately after Fed announcement",
             "impact": "Validates importance of macro news, will monitor Fed closely",
-            "confidence": 0.8
+            "confidence": 0.8,
         },
         "technical_signal": {
             "content": "BTC broke key resistance at $95k with high volume",
             "impact": "Bullish signal confirmed, expecting continuation to $100k",
-            "confidence": 0.7
-        }
-    }
+            "confidence": 0.7,
+        },
+    },
 }

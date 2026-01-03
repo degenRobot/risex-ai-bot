@@ -1,14 +1,13 @@
 """Async data manager for efficient parallel data fetching."""
 
 import asyncio
-from typing import Dict, List, Tuple, Optional, Any
-from datetime import datetime
 import logging
+from datetime import datetime
+from typing import Any, Optional
 
-from .rise_client import RiseClient
 from .equity_monitor import get_equity_monitor
+from .rise_client import RiseClient
 from .storage import JSONStorage
-
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +25,8 @@ class AsyncDataManager:
     
     async def fetch_all_data_for_accounts(
         self, 
-        accounts: List[Any]
-    ) -> Dict[str, Dict]:
+        accounts: list[Any],
+    ) -> dict[str, dict]:
         """Fetch all data for multiple accounts in parallel.
         
         Returns:
@@ -47,13 +46,13 @@ class AsyncDataManager:
         
         # Build result dict
         account_data = {}
-        for account, result in zip(accounts, results):
+        for account, result in zip(accounts, results, strict=False):
             if isinstance(result, Exception):
                 logger.error(f"Error fetching data for {account.id}: {result}")
                 account_data[account.id] = {
                     "error": str(result),
                     "account": account,
-                    "market_data": market_data
+                    "market_data": market_data,
                 }
             else:
                 account_data[account.id] = result
@@ -63,15 +62,15 @@ class AsyncDataManager:
     async def _fetch_account_data(
         self, 
         account: Any, 
-        market_data: Dict
-    ) -> Dict:
+        market_data: dict,
+    ) -> dict:
         """Fetch all data for a single account in parallel."""
         # Create all tasks for this account
         tasks = {
             "equity": self.equity_monitor.fetch_equity(account.address),
             "positions": self.rise_client.get_all_positions(account.address),
             "trades": self.rise_client.get_account_trade_history(account.address, limit=20),
-            "orders": self._get_recent_orders(account.address)
+            "orders": self._get_recent_orders(account.address),
         }
         
         # Execute all tasks concurrently
@@ -89,7 +88,7 @@ class AsyncDataManager:
             equity=results["equity"],
             positions=results["positions"],
             trades=results["trades"],
-            market_data=market_data
+            market_data=market_data,
         )
         
         return {
@@ -100,10 +99,10 @@ class AsyncDataManager:
             "orders": results["orders"],
             "market_data": market_data,
             "pnl": pnl_data,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
         }
     
-    async def _get_market_data(self) -> Dict:
+    async def _get_market_data(self) -> dict:
         """Get cached or fresh market data."""
         now = datetime.utcnow()
         
@@ -120,7 +119,7 @@ class AsyncDataManager:
         try:
             enhanced_data, markets = await asyncio.gather(
                 enhanced_data_task, 
-                markets_task
+                markets_task,
             )
             
             # Build market lookup
@@ -131,13 +130,13 @@ class AsyncDataManager:
                 market_lookup[market_id] = {
                     "symbol": symbol,
                     "last_price": float(market.get("last_price", 0)),
-                    "change_24h": float(market.get("change_24h", 0))
+                    "change_24h": float(market.get("change_24h", 0)),
                 }
             
             self._market_cache = {
                 **enhanced_data,
                 "market_lookup": market_lookup,
-                "markets": markets
+                "markets": markets,
             }
             self._last_market_update = now
             
@@ -151,12 +150,12 @@ class AsyncDataManager:
         
         return self._market_cache
     
-    async def _get_recent_orders(self, account: str, limit: int = 10) -> List[Dict]:
+    async def _get_recent_orders(self, account: str, limit: int = 10) -> list[dict]:
         """Get recent orders for an account."""
         try:
             response = await self.rise_client._request(
                 "GET", "/v1/orders",
-                params={"account": account, "limit": limit}
+                params={"account": account, "limit": limit},
             )
             return response.get("orders", [])
         except Exception as e:
@@ -167,10 +166,10 @@ class AsyncDataManager:
         self,
         account: Any,
         equity: Optional[float],
-        positions: Optional[List[Dict]],
-        trades: Optional[List[Dict]],
-        market_data: Dict
-    ) -> Dict:
+        positions: Optional[list[dict]],
+        trades: Optional[list[dict]],
+        market_data: dict,
+    ) -> dict:
         """Calculate comprehensive P&L data."""
         result = {
             "initial_deposit": account.deposit_amount or 1000.0,
@@ -180,7 +179,7 @@ class AsyncDataManager:
             "unrealized_pnl": 0,
             "realized_pnl": 0,
             "total_trades": 0,
-            "open_positions": 0
+            "open_positions": 0,
         }
         
         # Net P&L from equity

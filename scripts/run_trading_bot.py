@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Production script to run the automated trading bot."""
 
-import asyncio
 import argparse
+import asyncio
 import os
 import signal
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Add parent directory to path for imports
@@ -51,7 +52,7 @@ async def run_bot(interval: int, max_position: float, dry_run: bool):
     if not os.getenv("OPENROUTER_API_KEY"):
         print("⚠️  Warning: OPENROUTER_API_KEY not set - AI features limited")
     
-    print(f"📋 Configuration:")
+    print("📋 Configuration:")
     print(f"   Interval: {interval} seconds")
     print(f"   Max Position: ${max_position}")
     print(f"   Mode: {'DRY RUN' if dry_run else '🚨 LIVE TRADING'}")
@@ -61,7 +62,7 @@ async def run_bot(interval: int, max_position: float, dry_run: bool):
     bot = TradingBot(
         interval_seconds=interval,
         max_position_usd=max_position,
-        dry_run=dry_run
+        dry_run=dry_run,
     )
     
     # Check for accounts
@@ -72,7 +73,7 @@ async def run_bot(interval: int, max_position: float, dry_run: bool):
     if not active_accounts:
         print("❌ No active accounts found!")
         response = input("Create demo accounts? (y/N): ").lower()
-        if response == 'y':
+        if response == "y":
             await create_demo_accounts()
         else:
             print("Exiting - no accounts to trade with.")
@@ -101,23 +102,23 @@ def main():
         "--interval", 
         type=int, 
         default=300, 
-        help="Trading interval in seconds (default: 300)"
+        help="Trading interval in seconds (default: 300)",
     )
     parser.add_argument(
         "--max-position", 
         type=float, 
         default=100.0, 
-        help="Maximum position size in USD (default: 100.0)"
+        help="Maximum position size in USD (default: 100.0)",
     )
     parser.add_argument(
         "--live", 
         action="store_true", 
-        help="Enable live trading (default: dry run)"
+        help="Enable live trading (default: dry run)",
     )
     parser.add_argument(
         "--create-accounts", 
         action="store_true", 
-        help="Create demo accounts and exit"
+        help="Create demo accounts and exit",
     )
     
     args = parser.parse_args()
@@ -141,7 +142,7 @@ def main():
         asyncio.run(run_bot(
             interval=args.interval,
             max_position=args.max_position,
-            dry_run=not args.live
+            dry_run=not args.live,
         ))
     except KeyboardInterrupt:
         print("\n👋 Bot stopped by user")

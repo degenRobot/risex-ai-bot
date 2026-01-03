@@ -4,19 +4,17 @@ import json
 from datetime import datetime
 from uuid import UUID
 
-import pytest
-
 from app.realtime.events import (
-    EventType,
     EventMetadata,
+    EventType,
     RealtimeEvent,
-    create_market_update,
+    create_account_update,
     create_chat_message,
-    create_chat_stream_start,
     create_chat_stream_chunk,
     create_chat_stream_final,
+    create_chat_stream_start,
+    create_market_update,
     create_trade_decision,
-    create_account_update
 )
 
 
@@ -34,7 +32,7 @@ def test_realtime_event_creation():
         type=EventType.MARKET_UPDATE,
         profile_id="test-profile",
         payload={"symbol": "BTC", "price": 95000},
-        metadata=EventMetadata(sender_id="test-sender")
+        metadata=EventMetadata(sender_id="test-sender"),
     )
     
     assert isinstance(event.id, UUID)
@@ -53,8 +51,8 @@ def test_event_serialization():
         payload={"content": "Hello world"},
         metadata=EventMetadata(
             sender_id="user-456",
-            message_id="msg-789"
-        )
+            message_id="msg-789",
+        ),
     )
     
     # Serialize to JSON
@@ -84,7 +82,7 @@ def test_create_market_update():
         price=3100.50,
         change_24h=-0.025,
         volume_24h=1500000.0,
-        funding_rate=0.001
+        funding_rate=0.001,
     )
     
     assert event.type == EventType.MARKET_UPDATE
@@ -102,7 +100,7 @@ def test_create_chat_message():
         sender_id="user-123",
         message_id="msg-456",
         content="What's the market outlook?",
-        role="user"
+        role="user",
     )
     
     assert event.type == EventType.CHAT_USER_MESSAGE
@@ -128,7 +126,7 @@ def test_chat_streaming_events():
     
     # Chunk events
     chunk1 = create_chat_stream_chunk(
-        profile_id, message_id, "The market", 0, correlation_id
+        profile_id, message_id, "The market", 0, correlation_id,
     )
     assert chunk1.type == EventType.CHAT_ASSISTANT_CHUNK
     assert chunk1.payload["content"] == "The market"
@@ -136,7 +134,7 @@ def test_chat_streaming_events():
     assert chunk1.metadata.chunk_index == 0
     
     chunk2 = create_chat_stream_chunk(
-        profile_id, message_id, " looks bullish", 1, correlation_id
+        profile_id, message_id, " looks bullish", 1, correlation_id,
     )
     assert chunk2.payload["content"] == " looks bullish"
     assert chunk2.payload["chunk_index"] == 1
@@ -145,7 +143,7 @@ def test_chat_streaming_events():
     final = create_chat_stream_final(
         profile_id, message_id,
         "The market looks bullish",
-        correlation_id, 2
+        correlation_id, 2,
     )
     assert final.type == EventType.CHAT_ASSISTANT_FINAL
     assert final.payload["content"] == "The market looks bullish"
@@ -161,7 +159,7 @@ def test_create_trade_decision():
         action="buy",
         size=0.1,
         reason="Strong support at 95k",
-        confidence=0.85
+        confidence=0.85,
     )
     
     assert event.type == EventType.TRADE_DECISION
@@ -182,7 +180,7 @@ def test_create_account_update():
         equity=10500.50,
         free_margin=8000.0,
         positions_count=3,
-        total_pnl=500.50
+        total_pnl=500.50,
     )
     
     assert event.type == EventType.ACCOUNT_UPDATE
@@ -213,7 +211,7 @@ def test_metadata_optional_fields():
         message_id="msg-789",
         chunk_index=5,
         total_chunks=10,
-        correlation_id="corr-xyz"
+        correlation_id="corr-xyz",
     )
     assert meta3.sender_id == "user-456"
     assert meta3.chunk_index == 5

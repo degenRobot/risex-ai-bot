@@ -23,17 +23,17 @@ async def check_order(order_id: str, account_address: str):
         # Get order details
         order_response = await rise_client._request(
             "GET", 
-            f"/v1/orders/{order_id}"
+            f"/v1/orders/{order_id}",
         )
         
-        print(f"\nOrder Response:")
+        print("\nOrder Response:")
         print(json.dumps(order_response, indent=2))
         
         # Also check trade history
         trades_response = await rise_client._request(
             "GET",
             "/v1/trade-history",
-            params={"account": account_address}
+            params={"account": account_address},
         )
         
         # Find trades for this order
@@ -66,15 +66,15 @@ async def check_positions(account_address: str):
         positions_response = await rise_client._request(
             "GET",
             "/v1/positions",
-            params={"account": account_address}
+            params={"account": account_address},
         )
         
-        print(f"\nPositions Response:")
+        print("\nPositions Response:")
         print(json.dumps(positions_response, indent=2))
         
         # Also get account balance
         balance_response = await rise_client.get_balance(account_address)
-        print(f"\nBalance Response:")
+        print("\nBalance Response:")
         print(json.dumps(balance_response, indent=2))
         
         # Get equity from RPC
@@ -84,7 +84,7 @@ async def check_positions(account_address: str):
         equity = await equity_monitor.fetch_equity(account_address)
         free_margin = await equity_monitor.fetch_free_margin(account_address)
         
-        print(f"\nRPC Equity Data:")
+        print("\nRPC Equity Data:")
         print(f"Total Equity: ${equity:.2f}")
         print(f"Free Margin: ${free_margin:.2f}")
         
@@ -107,7 +107,7 @@ async def check_all_accounts():
         print(f"Account: {account_data['persona']['name']} ({account_data['persona']['handle']})")
         print(f"Address: {account_data['address']}")
         
-        await check_positions(account_data['address'])
+        await check_positions(account_data["address"])
         
         # Small delay between accounts
         await asyncio.sleep(0.5)

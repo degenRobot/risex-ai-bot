@@ -1,9 +1,9 @@
 """WebSocket endpoint for realtime event streaming."""
 
 import asyncio
-import json
 import logging
-from typing import Optional, Set
+from datetime import UTC, datetime
+from typing import Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -11,8 +11,6 @@ from fastapi.websockets import WebSocketState
 
 from .bus import BUS
 from .events import EventType, RealtimeEvent, create_chat_message
-from datetime import datetime, timezone
-
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -30,7 +28,7 @@ class ConnectionManager:
         websocket: WebSocket,
         connection_id: str,
         user_id: Optional[str] = None,
-        profile_id: Optional[str] = None
+        profile_id: Optional[str] = None,
     ):
         """Register a new WebSocket connection."""
         await websocket.accept()
@@ -38,7 +36,7 @@ class ConnectionManager:
         self._connection_metadata[connection_id] = {
             "user_id": user_id,
             "profile_id": profile_id,
-            "connected_at": datetime.now(timezone.utc)
+            "connected_at": datetime.now(UTC),
         }
         logger.info(f"WebSocket connected: {connection_id} (user: {user_id})")
     
@@ -70,7 +68,7 @@ async def websocket_endpoint(
     profile_id: Optional[str] = Query(None, description="Profile ID to subscribe to"),
     user_id: Optional[str] = Query(None, description="User ID for deduplication"),
     subscribe_global: bool = Query(False, description="Subscribe to all events"),
-    last_event_id: Optional[str] = Query(None, description="Last received event ID for replay")
+    last_event_id: Optional[str] = Query(None, description="Last received event ID for replay"),
 ):
     """
     WebSocket endpoint for realtime event streaming.
@@ -107,8 +105,8 @@ async def websocket_endpoint(
                 "connection_id": connection_id,
                 "profile_id": profile_id,
                 "user_id": user_id,
-                "subscribed": subscribe_global or bool(profile_id)
-            }
+                "subscribed": subscribe_global or bool(profile_id),
+            },
         })
         
         # Replay missed events if requested
@@ -138,7 +136,7 @@ async def websocket_endpoint(
         # Wait for either task to complete
         done, pending = await asyncio.wait(
             tasks,
-            return_when=asyncio.FIRST_COMPLETED
+            return_when=asyncio.FIRST_COMPLETED,
         )
         
         # Cancel pending tasks
@@ -164,7 +162,7 @@ async def websocket_endpoint(
             try:
                 await websocket.send_json({
                     "type": EventType.BOT_DISCONNECTED.value,
-                    "payload": {"connection_id": connection_id}
+                    "payload": {"connection_id": connection_id},
                 })
             except:
                 pass
@@ -179,7 +177,7 @@ async def handle_receive(
     websocket: WebSocket,
     connection_id: str,
     user_id: Optional[str],
-    profile_id: Optional[str]
+    profile_id: Optional[str],
 ):
     """Handle incoming messages from the WebSocket client."""
     try:
@@ -193,7 +191,7 @@ async def handle_receive(
                 # Respond to ping
                 await websocket.send_json({
                     "type": "pong",
-                    "payload": {"timestamp": datetime.now(timezone.utc).isoformat()}
+                    "payload": {"timestamp": datetime.now(UTC).isoformat()},
                 })
             
             elif message_type == "subscribe":
@@ -203,7 +201,7 @@ async def handle_receive(
                     await BUS.subscribe_profile(connection_id, new_profile_id, user_id)
                     await websocket.send_json({
                         "type": "subscribed",
-                        "payload": {"profile_id": new_profile_id}
+                        "payload": {"profile_id": new_profile_id},
                     })
             
             elif message_type == "unsubscribe":
@@ -213,7 +211,7 @@ async def handle_receive(
                     await BUS.unsubscribe(connection_id, remove_profile_id)
                     await websocket.send_json({
                         "type": "unsubscribed",
-                        "payload": {"profile_id": remove_profile_id}
+                        "payload": {"profile_id": remove_profile_id},
                     })
             
             elif message_type == "chat.message":
@@ -229,7 +227,7 @@ async def handle_receive(
                         sender_id=user_id or connection_id,
                         message_id=message_id,
                         content=content,
-                        role="user"
+                        role="user",
                     )
                     await BUS.publish(event)
                     
@@ -238,8 +236,8 @@ async def handle_receive(
                         "type": "message_sent",
                         "payload": {
                             "message_id": message_id,
-                            "profile_id": target_profile_id
-                        }
+                            "profile_id": target_profile_id,
+                        },
                     })
             
             else:
@@ -282,5 +280,5 @@ async def websocket_status():
         "active_connections": connection_manager.get_connection_count(),
         "subscribers": subscriber_stats,
         "event_bus": "active",
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.now(UTC).isoformat(),
     }

@@ -24,7 +24,7 @@ async def check_trade_history(account_address: str):
         trades_response = await rise_client._request(
             "GET",
             "/v1/trade-history",
-            params={"account": account_address, "page_size": 20}
+            params={"account": account_address, "page_size": 20},
         )
         
         print(f"\nTotal trades: {trades_response.get('data', {}).get('total_count', 0)}")
@@ -41,7 +41,7 @@ async def check_trade_history(account_address: str):
                 print(f"Block: {trade.get('block_number')}")
                 
                 # Check if this is order 6037211
-                if trade.get('order_id') == '6037211':
+                if trade.get("order_id") == "6037211":
                     print("\n⚡ FOUND ORDER 6037211!")
                     print(json.dumps(trade, indent=2))
         
@@ -64,7 +64,7 @@ async def main():
         print(f"\n{'='*60}")
         print(f"Account: {account_data['persona']['name']}")
         
-        await check_trade_history(account_data['address'])
+        await check_trade_history(account_data["address"])
         
         # Small delay
         await asyncio.sleep(0.5)

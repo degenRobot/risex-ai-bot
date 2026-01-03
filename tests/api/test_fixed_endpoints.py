@@ -4,13 +4,12 @@
 import asyncio
 import sys
 from pathlib import Path
-from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from app.services.storage import JSONStorage
-from app.services.profile_chat import ProfileChatService
 from app.services.equity_monitor import get_equity_monitor
+from app.services.profile_chat import ProfileChatService
+from app.services.storage import JSONStorage
 
 
 async def test_api_fixes():
@@ -43,14 +42,14 @@ async def test_api_fixes():
         print(f"   Context Keys: {list(context.keys())}")
         
         # Display results
-        current_equity = context.get('current_equity')
+        current_equity = context.get("current_equity")
         print(f"   Raw equity value: {current_equity} (type: {type(current_equity)})")
         
         # Convert values for display
         current_equity_val = float(current_equity) if current_equity else 0.0
-        current_pnl = context.get('current_pnl', 0) or 0
-        available_balance = context.get('available_balance', 0) or 0
-        open_positions = context.get('open_positions', 0) or 0
+        current_pnl = context.get("current_pnl", 0) or 0
+        available_balance = context.get("available_balance", 0) or 0
+        open_positions = context.get("open_positions", 0) or 0
         
         print(f"   Current Equity: ${current_equity_val:,.2f}")
         print(f"   Current P&L: ${current_pnl:,.2f}")
@@ -58,10 +57,10 @@ async def test_api_fixes():
         print(f"   Open Positions: {open_positions}")
         
         # Verify P&L calculation
-        if context.get('current_equity'):
-            expected_pnl = context['current_equity'] - account.deposit_amount
-            actual_pnl = context.get('current_pnl', 0)
-            print(f"\n   ✅ P&L Verification:")
+        if context.get("current_equity"):
+            expected_pnl = context["current_equity"] - account.deposit_amount
+            actual_pnl = context.get("current_pnl", 0)
+            print("\n   ✅ P&L Verification:")
             print(f"      Expected: ${expected_pnl:,.2f}")
             print(f"      Actual: ${actual_pnl:,.2f}")
             print(f"      Match: {'YES' if abs(expected_pnl - actual_pnl) < 0.01 else 'NO'}")
@@ -80,9 +79,9 @@ async def test_api_fixes():
             print(f"   Error fetching free margin: {e}")
         
         # Test 3: Check positions
-        if context.get('positions'):
+        if context.get("positions"):
             print(f"\n📈 Positions ({len(context['positions'])} total):")
-            for pos in context['positions']:
+            for pos in context["positions"]:
                 print(f"   - {pos.get('market', 'Unknown')}: "
                       f"Size={pos.get('size', 0)}, "
                       f"Side={pos.get('side', 'Unknown')}")

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Test storage resilience to corrupted data files."""
 
-import json
+import sys
 import tempfile
 from pathlib import Path
-import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -32,7 +31,7 @@ def test_corrupted_json_recovery():
         
         # Test 2: Corrupted JSON
         print("\n2. Testing corrupted JSON recovery...")
-        with open(storage.pending_actions_file, 'w') as f:
+        with open(storage.pending_actions_file, "w") as f:
             f.write('{"broken": json with invalid syntax}')
         
         # Should recover and return empty dict
@@ -56,7 +55,7 @@ def test_corrupted_json_recovery():
         print("\n4. Testing API methods with recovery...")
         
         # Corrupt the accounts file
-        with open(storage.accounts_file, 'w') as f:
+        with open(storage.accounts_file, "w") as f:
             f.write('{"account1": {"invalid": json},}')
         
         # Should handle gracefully
@@ -71,11 +70,11 @@ def test_corrupted_json_recovery():
         corrupted_files = [
             storage.trades_file,
             storage.decisions_file,
-            storage.sessions_file
+            storage.sessions_file,
         ]
         
         for file_path in corrupted_files:
-            with open(file_path, 'w') as f:
+            with open(file_path, "w") as f:
                 f.write('{"bad": json with, trailing comma,}')
         
         # Repair all files

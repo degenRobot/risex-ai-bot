@@ -3,14 +3,15 @@
 
 import asyncio
 from datetime import datetime
-from typing import Dict, Optional, Tuple
+from typing import Optional
+
 from web3 import Web3
 
+from ..models import Account, Persona
+from ..trader_profiles import create_trader_profile
+from .equity_monitor import get_equity_monitor
 from .rise_client import RiseClient
 from .storage import JSONStorage
-from .equity_monitor import get_equity_monitor
-from ..trader_profiles import create_trader_profile
-from ..models import Account, Persona
 
 
 class AccountCreationError(Exception):
@@ -31,8 +32,8 @@ class AccountCreator:
         self,
         personality_type: str = "cynical",
         deposit_amount: float = 1000.0,
-        max_retries: int = 3
-    ) -> Tuple[str, Account]:
+        max_retries: int = 3,
+    ) -> tuple[str, Account]:
         """
         Create a complete fresh trading profile.
         
@@ -56,7 +57,7 @@ class AccountCreator:
         try:
             # Step 2: Register signer with retries
             registration_success = await self._register_signer_with_retry(
-                main_account, signer_account, max_retries
+                main_account, signer_account, max_retries,
             )
             
             # Step 3: Wait briefly after registration
@@ -66,13 +67,13 @@ class AccountCreator:
             
             # Step 4: Deposit USDC with retries
             deposit_success = await self._deposit_usdc_with_retry(
-                main_account, deposit_amount, max_retries
+                main_account, deposit_amount, max_retries,
             )
             
             # Step 5: Create profile object
             account_id, account = self._create_account_object(
                 main_account, signer_account, personality_type, 
-                deposit_amount, registration_success, deposit_success
+                deposit_amount, registration_success, deposit_success,
             )
             
             # Step 6: Save to storage
@@ -91,7 +92,7 @@ class AccountCreator:
         finally:
             await self.rise_client.close()
     
-    def _generate_keys(self) -> Tuple[any, any]:
+    def _generate_keys(self) -> tuple[any, any]:
         """Generate cryptographic keys for main and signer accounts."""
         main_account = self.w3.eth.account.create()
         signer_account = self.w3.eth.account.create()
@@ -106,7 +107,7 @@ class AccountCreator:
         self, 
         main_account: any, 
         signer_account: any,
-        max_retries: int
+        max_retries: int,
     ) -> bool:
         """Register signer with retry logic."""
         for attempt in range(max_retries):
@@ -115,7 +116,7 @@ class AccountCreator:
                 
                 result = await self.rise_client.register_signer(
                     account_key=main_account.key.hex(),
-                    signer_key=signer_account.key.hex()
+                    signer_key=signer_account.key.hex(),
                 )
                 
                 # Check nested success
@@ -143,7 +144,7 @@ class AccountCreator:
         self,
         main_account: any,
         amount: float,
-        max_retries: int
+        max_retries: int,
     ) -> bool:
         """Deposit USDC with retry logic for backend API issues."""
         for attempt in range(max_retries):
@@ -152,7 +153,7 @@ class AccountCreator:
                 
                 result = await self.rise_client.deposit_usdc(
                     account_key=main_account.key.hex(),
-                    amount=amount
+                    amount=amount,
                 )
                 
                 # Check nested success
@@ -184,8 +185,8 @@ class AccountCreator:
         personality_type: str,
         deposit_amount: float,
         registration_success: bool,
-        deposit_success: bool
-    ) -> Tuple[str, Account]:
+        deposit_success: bool,
+    ) -> tuple[str, Account]:
         """Create Account object from successful creation."""
         trader_profile = create_trader_profile(personality_type)
         timestamp = int(datetime.now().timestamp())
@@ -204,7 +205,7 @@ class AccountCreator:
                 risk_tolerance=self._map_risk_tolerance(personality_type),
                 favorite_assets=["BTC", "ETH"],
                 personality_traits=trader_profile.base_persona.base_traits[:3],
-                sample_posts=[f"Fresh {personality_type} trader ready for action!"]
+                sample_posts=[f"Fresh {personality_type} trader ready for action!"],
             ),
             is_active=True,
             is_registered=registration_success,
@@ -212,7 +213,7 @@ class AccountCreator:
             has_deposited=deposit_success,
             deposited_at=datetime.now() if deposit_success else None,
             deposit_amount=deposit_amount if deposit_success else None,
-            created_at=datetime.now()
+            created_at=datetime.now(),
         )
         
         return account_id, account
@@ -243,7 +244,7 @@ class AccountCreator:
             "conservative": "conservative", 
             "moderate": "momentum",
             "aggressive": "aggressive",
-            "degen": "degen"
+            "degen": "degen",
         }
         return mapping.get(risk_profile, "momentum")
     
@@ -252,7 +253,7 @@ class AccountCreator:
         mapping = {
             "cynical": 0.3,
             "leftCurve": 0.9,
-            "midwit": 0.6
+            "midwit": 0.6,
         }
         return mapping.get(personality_type, 0.5)
 
@@ -260,8 +261,8 @@ class AccountCreator:
 # Convenience function for external use
 async def create_fresh_profile(
     personality_type: str = "cynical",
-    deposit_amount: float = 1000.0
-) -> Tuple[str, Account]:
+    deposit_amount: float = 1000.0,
+) -> tuple[str, Account]:
     """
     Create a fresh trading profile with full onboarding.
     

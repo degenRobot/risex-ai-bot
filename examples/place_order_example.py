@@ -13,9 +13,9 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from app.core.market_manager import get_market_manager
 from app.services.rise_client import RiseClient
 from app.services.storage import JSONStorage
-from app.core.market_manager import get_market_manager
 
 
 async def place_order_example():
@@ -55,10 +55,10 @@ async def place_order_example():
         "size": 0.001,  # 0.001 BTC
         "price": btc_price * 0.99,  # 1% below market
         "side": "buy",
-        "order_type": "limit"
+        "order_type": "limit",
     }
     
-    print(f"\nOrder Details:")
+    print("\nOrder Details:")
     print(f"- Type: {order_params['order_type'].upper()} {order_params['side'].upper()}")
     print(f"- Size: {order_params['size']} BTC")
     print(f"- Price: ${order_params['price']:,.2f}")
@@ -70,10 +70,10 @@ async def place_order_example():
         result = await rise_client.place_order(
             account_key=account.private_key,
             signer_key=account.signer_key,
-            **order_params
+            **order_params,
         )
         
-        if result.get('success'):
+        if result.get("success"):
             print("✓ Order placed successfully!")
             print(f"  Order ID: {result.get('data', {}).get('order_id')}")
             print(f"  TX Hash: {result.get('data', {}).get('transaction_hash')}")
@@ -101,7 +101,7 @@ async def place_custom_order(
     account_address: str,
     market: str = "BTC",  # BTC or ETH
     size: float = 0.001,
-    price_offset: float = 0.99  # 0.99 = 1% below market
+    price_offset: float = 0.99,  # 0.99 = 1% below market
 ):
     """Place a custom order."""
     rise_client = RiseClient()
@@ -134,7 +134,7 @@ async def place_custom_order(
         size=size,
         price=current_price * price_offset,
         side="buy",
-        order_type="limit"
+        order_type="limit",
     )
     
     print(f"Order result: {result}")

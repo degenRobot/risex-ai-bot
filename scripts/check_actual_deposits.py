@@ -4,13 +4,12 @@
 import asyncio
 import sys
 from pathlib import Path
-from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.services.storage import JSONStorage
-from app.services.rise_client import RiseClient
 from app.services.equity_monitor import get_equity_monitor
+from app.services.rise_client import RiseClient
+from app.services.storage import JSONStorage
 
 
 async def check_deposits():

@@ -2,16 +2,16 @@
 """Show Midwit McGee's complete portfolio and P&L."""
 
 import asyncio
-from pathlib import Path
 import sys
+from pathlib import Path
 
 # Add project root to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from app.core.market_manager import get_market_manager
+from app.services.equity_monitor import get_equity_monitor
 from app.services.rise_client import RiseClient
 from app.services.storage import JSONStorage
-from app.services.equity_monitor import get_equity_monitor
-from app.core.market_manager import get_market_manager
 
 
 async def show_portfolio():
@@ -28,7 +28,7 @@ async def show_portfolio():
     accounts = storage.get_all_accounts()
     midwit = None
     for acc_id, acc in accounts.items():
-        if acc['persona']['name'] == "Midwit McGee":
+        if acc["persona"]["name"] == "Midwit McGee":
             midwit = acc
             break
     
@@ -37,10 +37,10 @@ async def show_portfolio():
         return
     
     # Get current equity and margin
-    equity_data = await equity_monitor.fetch_equity_and_margin(midwit['address'])
+    equity_data = await equity_monitor.fetch_equity_and_margin(midwit["address"])
     
     print(f"Account: {midwit['address']}")
-    print(f"\nEquity Overview:")
+    print("\nEquity Overview:")
     print(f"  Total Equity: ${equity_data['equity']:,.2f}")
     print(f"  Free Margin: ${equity_data['free_margin']:,.2f}")
     print(f"  Margin Used: ${equity_data['equity'] - equity_data['free_margin']:,.2f}")
@@ -52,7 +52,7 @@ async def show_portfolio():
     positions_resp = await rise_client._request(
         "GET",
         "/v1/positions",
-        params={"account": midwit['address']}
+        params={"account": midwit["address"]},
     )
     
     if positions_resp.get("data", {}).get("positions"):
@@ -63,19 +63,19 @@ async def show_portfolio():
         total_pnl = 0
         
         for pos in positions_resp["data"]["positions"]:
-            market_id = int(pos['market_id'])
+            market_id = int(pos["market_id"])
             market_info = market_manager.get_market_by_id(market_id)
             
             if market_info:
-                symbol = market_info['base_asset_symbol']
-                current_price = float(market_info.get('index_price', market_info.get('last_price', 0)))
+                symbol = market_info["base_asset_symbol"]
+                current_price = float(market_info.get("index_price", market_info.get("last_price", 0)))
             else:
                 symbol = f"Market{market_id}"
                 current_price = 0
             
-            size = float(pos['size']) / 1e18
-            avg_price = float(pos['avg_entry_price']) / 1e18
-            side = pos['side']
+            size = float(pos["size"]) / 1e18
+            avg_price = float(pos["avg_entry_price"]) / 1e18
+            side = pos["side"]
             
             # Calculate P&L
             if side == "BUY":
@@ -99,7 +99,7 @@ async def show_portfolio():
         print(f"Total Unrealized P&L: ${total_pnl:,.2f}")
         
         # Position sizing info
-        print(f"\n💡 Position Sizing Info:")
+        print("\n💡 Position Sizing Info:")
         print(f"  Max position per trade (50% of free margin): ${equity_data['free_margin'] * 0.5:,.2f}")
         print(f"  Conservative (10-20%): ${equity_data['free_margin'] * 0.1:,.2f} - ${equity_data['free_margin'] * 0.2:,.2f}")
         print(f"  Moderate (20-35%): ${equity_data['free_margin'] * 0.2:,.2f} - ${equity_data['free_margin'] * 0.35:,.2f}")

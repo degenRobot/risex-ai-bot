@@ -359,12 +359,14 @@ print(f"Initial equity: ${result.get('initial_equity', 0):.2f}")
 - Fetches initial equity for P&L tracking
 - Saves profile with all metadata
 
-#### Option C: Admin API (Recommended for External Clients)
+#### Option C: Admin API (Currently Disabled)
 
-Use the automated profile creation endpoint that handles everything:
+**NOTE**: Profile creation via API is temporarily disabled during system refactoring (returns HTTP 501).
+Use Options A or B for creating new profiles.
 
 **API Endpoint**: `POST /api/admin/profiles`  
-**Authentication**: Requires `X-API-Key` header with `ADMIN_API_KEY`
+**Authentication**: Requires `X-API-Key` header with `ADMIN_API_KEY`  
+**Status**: Currently returns 501 Not Implemented
 
 ```bash
 curl -X POST "https://risex-trading-bot.fly.dev/api/admin/profiles" \

@@ -2,8 +2,7 @@
 
 import asyncio
 import json
-from typing import Dict, Optional, List, Set
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from .rise_client import RiseClient
 from .storage import JSONStorage
@@ -15,7 +14,7 @@ class OrderTracker:
     def __init__(self):
         self.rise_client = RiseClient()
         self.storage = JSONStorage()
-        self.known_trades: Dict[str, Set[str]] = {}  # account -> set of trade IDs
+        self.known_trades: dict[str, set[str]] = {}  # account -> set of trade IDs
         
     async def check_order_success(
         self,
@@ -23,8 +22,8 @@ class OrderTracker:
         order_id: str,
         expected_side: str,
         expected_size: float,
-        timeout_seconds: int = 10
-    ) -> Dict:
+        timeout_seconds: int = 10,
+    ) -> dict:
         """Check if an order was successfully executed.
         
         Args:
@@ -58,13 +57,13 @@ class OrderTracker:
                             "side": trade.get("side"),
                             "fee": float(trade.get("fee", 0)),
                             "time": trade.get("time"),
-                            "tx_hash": trade.get("blockchain_data", {}).get("tx_hash")
+                            "tx_hash": trade.get("blockchain_data", {}).get("tx_hash"),
                         }
                 
                 # Also check orders endpoint
                 response = await self.rise_client._request(
                     "GET", "/v1/orders",
-                    params={"account": account, "limit": 20}
+                    params={"account": account, "limit": 20},
                 )
                 orders = response.get("orders", [])
                 
@@ -81,14 +80,14 @@ class OrderTracker:
                                 "filled_size": order.get("filled_size", order.get("size")),
                                 "price": float(order.get("avg_fill_price", order.get("price", 0))),
                                 "side": order.get("side"),
-                                "type": order.get("type")
+                                "type": order.get("type"),
                             }
                         elif status in ["cancelled", "expired"]:
                             return {
                                 "success": False,
                                 "order_status": status,
                                 "cancel_reason": cancel_reason,
-                                "filled_size": order.get("filled_size", "0")
+                                "filled_size": order.get("filled_size", "0"),
                             }
                 
             except Exception as e:
@@ -101,17 +100,17 @@ class OrderTracker:
         return {
             "success": False,
             "error": "Order not found within timeout",
-            "order_id": order_id
+            "order_id": order_id,
         }
     
-    async def get_account_positions_summary(self, account: str) -> Dict:
+    async def get_account_positions_summary(self, account: str) -> dict:
         """Get summary of account positions."""
         try:
             positions = await self.rise_client.get_all_positions(account)
             
             summary = {
                 "total_positions": len(positions),
-                "positions": []
+                "positions": [],
             }
             
             for pos in positions:
@@ -126,7 +125,7 @@ class OrderTracker:
                         "size": abs(size_btc),
                         "entry_price": float(pos.get("avg_entry_price", 0)) / 1e18,
                         "leverage": float(pos.get("leverage", 0)) / 1e18,
-                        "margin_mode": pos.get("margin_mode", "CROSS")
+                        "margin_mode": pos.get("margin_mode", "CROSS"),
                     })
             
             return summary
@@ -135,10 +134,10 @@ class OrderTracker:
             return {
                 "error": str(e),
                 "total_positions": 0,
-                "positions": []
+                "positions": [],
             }
     
-    async def update_account_trading_data(self, account_id: str, account_address: str) -> Dict:
+    async def update_account_trading_data(self, account_id: str, account_address: str) -> dict:
         """Update account with latest positions and trades."""
         
         # Get positions
@@ -158,7 +157,7 @@ class OrderTracker:
                     "price": float(trade.get("price", 0)),
                     "size": float(trade.get("size", 0)),
                     "time": trade.get("time"),
-                    "realized_pnl": float(trade.get("realized_pnl", 0))
+                    "realized_pnl": float(trade.get("realized_pnl", 0)),
                 })
                 
             # Store trades for the account
@@ -167,27 +166,27 @@ class OrderTracker:
                 "account_id": account_id,
                 "trades": recent_trades,
                 "positions": positions_summary["positions"], 
-                "last_updated": datetime.now().isoformat()
+                "last_updated": datetime.now().isoformat(),
             }
             
             # Save to a trading data file
             trading_file = self.storage.data_dir / "trading_data.json"
             all_data = {}
             if trading_file.exists():
-                with open(trading_file, 'r') as f:
+                with open(trading_file) as f:
                     all_data = json.loads(f.read())
             
             all_data[account_id] = trading_data
             
-            with open(trading_file, 'w') as f:
+            with open(trading_file, "w") as f:
                 f.write(json.dumps(all_data, indent=2))
             
-        except Exception as e:
+        except Exception:
             recent_trades = []
         
         return {
             "positions": positions_summary,
-            "recent_trades": recent_trades
+            "recent_trades": recent_trades,
         }
     
     async def close(self):

@@ -56,12 +56,14 @@ RPC Calls (getAccountEquity + getFreeCrossMarginBalance) → Storage → Trading
 
 FastAPI application providing REST endpoints:
 
-- /health - Health check
-- /api/profiles - List trading profiles
+- / - API information and status
+- /health - Health check with storage connectivity
+- /ws - WebSocket endpoint for real-time events
+- /api/profiles - List trading profiles with pagination
 - /api/profiles/{id}/chat - Chat with AI trader
 - /api/profiles/{id}/context - Get trading context
-- /api/profiles/{id}/start - Start trading
-- /api/profiles/{id}/stop - Stop trading
+- /api/analytics - Trading analytics across all profiles
+- /api/admin/profiles - Create new profiles (currently disabled, returns 501)
 
 ### 2. Trading Engine (app/core/parallel_executor.py)
 
@@ -73,13 +75,20 @@ Parallel execution system that:
 - Makes trading decisions based on personality + thoughts + risk limits
 - Updates thought process with decisions
 
-### 3. AI Integration (app/services/ai_client.py)
+### 3. AI Integration
 
+#### AI Client (app/services/ai_client.py)
 OpenRouter integration using OpenAI SDK:
 - Chat completions with streaming
 - Tool calling for structured actions
 - JSON mode for reliable parsing
-- Personality-based prompting
+- Model: x-ai/grok-beta (configurable)
+
+#### Prompt System (app/ai/)
+- prompt_loader_improved.py - Modular prompt loader with persona support
+- shared_speech.py - Global speech patterns across personalities
+- prompts/ - Markdown prompt templates
+- personas/ - JSON persona definitions (cynical_midwit, leftcurve_redacted, rightcurve_bigbrain)
 
 ### 4. Profile Chat Service (app/services/profile_chat.py)
 
@@ -94,7 +103,10 @@ Available tools:
 - update_market_outlook - Change view on specific asset
 - update_trading_bias - Adjust overall trading approach
 - add_influence - Record what influenced thinking
-- place_market_order - Execute trades with position sizing
+- update_thought_process - Record reasoning and decisions
+- place_order - Execute market orders on RISE
+- close_position - Close existing position
+- analyze_market - Get detailed market analysis
 
 ### 5. Thought Process Manager (app/services/thought_process.py)
 
@@ -111,6 +123,22 @@ JSON-based persistence:
 - Backup on write
 - Schema validation
 - Query methods for each data type
+
+### 7. Real-time System (app/realtime/)
+
+WebSocket event streaming:
+- events.py - Event models and factory functions
+- bus.py - Pub/sub event bus with profile filtering
+- ws.py - WebSocket endpoint with subscription management
+- Event types: market updates, chat messages, trade decisions, account updates
+
+### 8. Trading Actions (app/trading/actions.py)
+
+Action queue for coordinated execution:
+- Prevents concurrent trades on same market
+- Handles multi-market orders efficiently
+- Tracks pending and completed actions
+- Ensures atomic execution per profile
 
 ## Personality System
 
@@ -358,3 +386,7 @@ async def trading_flow():
 4. **Order Execution**: Fixed async/await issues and success detection
 5. **Multi-Market Support**: Expanded beyond BTC/ETH to all RISE markets
 6. **API Enhancements**: Added analytics, admin endpoints, and improved data consistency
+7. **Prompt System Refactor**: Replaced markdown prompts with modular JSON personas and templates
+8. **WebSocket Events**: Added real-time streaming for trades, chats, and market updates
+9. **Parallel Trading**: Enhanced concurrent execution with action queue for multi-market orders
+10. **Improved Personas**: Renamed to "midcurve midwit", "leftcurve redacted", "rightcurve big brain"

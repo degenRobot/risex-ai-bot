@@ -190,16 +190,30 @@ GET /analytics
 
 ```
 app/
+├── ai/               # Prompt system and personas
+│   ├── prompt_loader_improved.py  # Modular prompt loader
+│   ├── shared_speech.py          # Global speech patterns
+│   ├── prompts/                  # Prompt templates
+│   └── personas/                 # JSON persona definitions
 ├── api/              # REST API endpoints
 ├── core/             # Trading engine and account management
+│   ├── parallel_executor.py      # Parallel trading execution
+│   ├── market_manager.py         # Market data management
+│   └── trading_loop.py           # Main trading loop
+├── realtime/         # WebSocket and event system
+│   ├── events.py            # Event models and types
+│   ├── bus.py               # Event bus for pub/sub
+│   └── ws.py                # WebSocket endpoint
 ├── services/         # AI, chat, and RISE integration
 │   ├── ai_client.py         # OpenRouter AI integration
 │   ├── equity_monitor.py    # Real-time RPC equity/margin tracking
 │   ├── profile_chat.py      # Chat service with tool calling
-│   ├── prompt_builders.py   # Dynamic trading prompts with sizing
+│   ├── ai_tools.py          # Trading tools for AI function calling
 │   ├── rise_client.py       # RISE API client (market orders)
 │   ├── thought_process.py   # Shared thought management
 │   └── storage.py           # JSON persistence
+├── trading/          # Trading execution system
+│   └── actions.py           # Action queue for multi-market execution
 ├── trader_profiles.py       # Base personality definitions
 └── models.py               # Data models
 ```

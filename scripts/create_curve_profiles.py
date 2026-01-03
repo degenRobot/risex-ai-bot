@@ -2,21 +2,20 @@
 """Create left/mid/right curve profiles with completely new accounts."""
 
 import asyncio
-import os
-import sys
 import json
-from pathlib import Path
-from eth_account import Account as EthAccount
-from datetime import datetime
 import secrets
+import sys
+from datetime import datetime
+from pathlib import Path
+
+from eth_account import Account as EthAccount
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.services.storage import JSONStorage
-from app.services.rise_client import RiseClient
 from app.models import Account, Persona, TradingStyle
+from app.services.rise_client import RiseClient
+from app.services.storage import JSONStorage
 from app.trader_profiles import LEFT_CURVE, MID_CURVE, RIGHT_CURVE
-
 
 # Profile definitions with curve meme personalities
 CURVE_PROFILES = [
@@ -34,17 +33,17 @@ CURVE_PROFILES = [
                 "drunk_intuition", 
                 "vibes_based",
                 "accidentally_wise",
-                "easily_excited"
+                "easily_excited",
             ],
             favorite_assets=["BTC", "ETH", "DOGE", "SHIB"],
             sample_posts=[
                 "*hic* vibes r gud rn fren, buying moar btc",
                 "bartender said btc going up, im all in lmeow",
                 "if it feels good buy it, thats my strategy *hic*",
-                "markets go up when happy, down when sad, simple"
-            ]
+                "markets go up when happy, down when sad, simple",
+            ],
         ),
-        "initial_deposit": 1000.0
+        "initial_deposit": 1000.0,
     },
     {
         "profile_type": "midCurve",
@@ -60,17 +59,17 @@ CURVE_PROFILES = [
                 "easily_influenced",
                 "information_overload",
                 "complexity_addict",
-                "follows_gurus"
+                "follows_gurus",
             ],
             favorite_assets=["BTC", "ETH", "SOL", "LINK"],
             sample_posts=[
                 "just analyzed 47 indicators n still not sure iwo",
                 "guru said btc bullish but other guru said bearish hmm",
                 "need moar data before can decide, checking 15 more charts",
-                "wat if we combine elliot waves with fib retracements and moon phases"
-            ]
+                "wat if we combine elliot waves with fib retracements and moon phases",
+            ],
         ),
-        "initial_deposit": 1000.0
+        "initial_deposit": 1000.0,
     },
     {
         "profile_type": "rightCurve", 
@@ -86,18 +85,18 @@ CURVE_PROFILES = [
                 "decisively_wise",
                 "pattern_recognition",
                 "zen_trader",
-                "effortless_expertise"
+                "effortless_expertise",
             ],
             favorite_assets=["BTC", "ETH"],
             sample_posts=[
                 "btc is simply digital gold lmeow, everything else is noise",
                 "crowd panicking = time to buy. simple iwo",
                 "all ponzis but some ponzis better than others",
-                "survive first profit second, this is the way"
-            ]
+                "survive first profit second, this is the way",
+            ],
         ),
-        "initial_deposit": 1000.0
-    }
+        "initial_deposit": 1000.0,
+    },
 ]
 
 
@@ -121,7 +120,7 @@ async def create_fresh_account(profile_config: dict, storage: JSONStorage) -> Ac
         is_registered=False,
         persona=profile_config["persona"],
         deposit_amount=profile_config["initial_deposit"],
-        created_at=datetime.now()
+        created_at=datetime.now(),
     )
     
     # Save account
@@ -141,7 +140,7 @@ async def register_and_fund_account(account: Account, storage: JSONStorage):
         # Register signer
         success = await rise_client.register_signer(
             account_key=account.private_key,
-            signer_key=account.signer_key
+            signer_key=account.signer_key,
         )
         
         if not success:
@@ -163,7 +162,7 @@ async def register_and_fund_account(account: Account, storage: JSONStorage):
             try:
                 success = await rise_client.deposit_usdc(
                     account_key=account.private_key,
-                    amount=account.deposit_amount
+                    amount=account.deposit_amount,
                 )
                 if success:
                     print(f"✅ Deposited {account.deposit_amount} USDC for {account.persona.name}")
@@ -171,7 +170,7 @@ async def register_and_fund_account(account: Account, storage: JSONStorage):
                 else:
                     print(f"⚠️ Deposit attempt {attempt + 1} failed")
                     if attempt < max_retries - 1:
-                        print(f"   Retrying in 5 seconds...")
+                        print("   Retrying in 5 seconds...")
                         await asyncio.sleep(5)
             except Exception as e:
                 print(f"⚠️ Deposit attempt {attempt + 1} error: {e}")

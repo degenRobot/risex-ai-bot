@@ -7,8 +7,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.services.storage import JSONStorage
 from app.services.rise_client import RiseClient
+from app.services.storage import JSONStorage
 
 
 async def complete_registration():
@@ -45,7 +45,7 @@ async def complete_registration():
                 try:
                     success = await rise_client.register_signer(
                         account_key=account.private_key,
-                        signer_key=account.signer_key
+                        signer_key=account.signer_key,
                     )
                     if success:
                         account.is_registered = True
@@ -78,7 +78,7 @@ async def complete_registration():
                     try:
                         success = await rise_client.deposit_usdc(
                             account_key=account.private_key,
-                            amount=account.deposit_amount or 1000.0
+                            amount=account.deposit_amount or 1000.0,
                         )
                         if success:
                             account.has_deposited = True

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Verify production API and all fixes are deployed."""
 
+
 import requests
-import json
 
 
 def verify_api():
@@ -34,11 +34,11 @@ def verify_api():
             print(f"   - Deposit: ${profile.get('deposit_amount', 0):,.2f}")
             
             # Verify P&L calculation
-            expected_pnl = profile.get('current_equity', 0) - profile.get('deposit_amount', 0)
-            actual_pnl = profile.get('pnl', 0)
+            expected_pnl = profile.get("current_equity", 0) - profile.get("deposit_amount", 0)
+            actual_pnl = profile.get("pnl", 0)
             
             if abs(expected_pnl - actual_pnl) < 0.01:
-                print(f"   ✅ P&L calculation correct!")
+                print("   ✅ P&L calculation correct!")
             else:
                 print(f"   ❌ P&L mismatch: expected ${expected_pnl:.2f}, got ${actual_pnl:.2f}")
                 
@@ -52,7 +52,7 @@ def verify_api():
         resp = requests.get(f"{base_url}/api/profiles/all")
         profiles = resp.json()
         if profiles:
-            profile_id = profiles[0]['id']
+            profile_id = profiles[0]["id"]
             
             resp = requests.get(f"{base_url}/api/profiles/{profile_id}/summary")
             if resp.status_code == 200:
@@ -63,9 +63,9 @@ def verify_api():
                 print(f"   - Free Margin: ${summary.get('free_margin', 0):,.2f}")
                 print(f"   - Available Balance: ${summary.get('available_balance', 0):,.2f}")
                 
-                if summary.get('positions'):
+                if summary.get("positions"):
                     print(f"   - Positions ({len(summary['positions'])}):")
-                    for pos in summary['positions'][:2]:  # Show first 2
+                    for pos in summary["positions"][:2]:  # Show first 2
                         print(f"     • {pos['market']}: {pos['size']} @ ${pos['avg_price']:,.2f}")
                         
                 print("   ✅ Summary endpoint working!")
@@ -87,8 +87,8 @@ def verify_api():
             print(f"   Active Traders: {analytics.get('active_traders', 0)}")
             print(f"   Total Positions: {analytics.get('total_positions', 0)}")
             
-            if analytics.get('top_performer'):
-                top = analytics['top_performer']
+            if analytics.get("top_performer"):
+                top = analytics["top_performer"]
                 print(f"   Top Performer: {top['name']} (+{top['pnl_percent']:.2f}%)")
                 
             print("   ✅ Analytics working!")
@@ -104,7 +104,7 @@ def verify_api():
         # Try to update a non-existent account (should fail but endpoint should exist)
         resp = requests.patch(
             f"{base_url}/api/admin/accounts/test123",
-            json={"test": "data"}
+            json={"test": "data"},
         )
         if resp.status_code == 404:
             print("   ✅ Admin endpoint exists (correctly returned 404 for invalid account)")

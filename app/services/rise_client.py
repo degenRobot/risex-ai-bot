@@ -3,7 +3,7 @@
 import asyncio
 import random
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import httpx
 from eth_abi.packed import encode_packed
@@ -18,7 +18,7 @@ from ..config import settings
 class RiseAPIError(Exception):
     """RISE API error with details."""
     
-    def __init__(self, message: str, status_code: Optional[int] = None, details: Optional[Dict] = None):
+    def __init__(self, message: str, status_code: Optional[int] = None, details: Optional[dict] = None):
         super().__init__(message)
         self.status_code = status_code
         self.details = details or {}
@@ -30,14 +30,14 @@ class RiseClient:
     def __init__(self):
         self.base_url = settings.rise_api_base
         self.chain_id = settings.rise_chain_id
-        self.domain: Optional[Dict] = None
+        self.domain: Optional[dict] = None
     
-    async def _request(self, method: str, path: str, **kwargs) -> Dict[str, Any]:
+    async def _request(self, method: str, path: str, **kwargs) -> dict[str, Any]:
         """Make HTTP request with error handling."""
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.request(
-                    method, f"{self.base_url}{path}", **kwargs, timeout=30.0
+                    method, f"{self.base_url}{path}", **kwargs, timeout=30.0,
                 )
                 response.raise_for_status()
                 return response.json()
@@ -55,9 +55,9 @@ class RiseClient:
                     error_detail = f"{error_detail}: {e.response.text[:200]}"
                 raise RiseAPIError(f"API request failed: {error_detail}", e.response.status_code)
             except Exception as e:
-                raise RiseAPIError(f"Request failed: {str(e)}")
+                raise RiseAPIError(f"Request failed: {e!s}")
     
-    async def get_eip712_domain(self) -> Dict[str, Any]:
+    async def get_eip712_domain(self) -> dict[str, Any]:
         """Get EIP-712 domain for message signing."""
         if self.domain:
             return self.domain
@@ -78,7 +78,7 @@ class RiseClient:
         """Get nonce for account registration."""
         response = await self._request(
             "POST", "/v1/auth/nonce",
-            json={"account": account}
+            json={"account": account},
         )
         nonce_data = response.get("data", response)
         return int(nonce_data["nonce"])
@@ -87,8 +87,8 @@ class RiseClient:
     async def register_signer(
         self,
         account_key: str,
-        signer_key: str
-    ) -> Dict[str, Any]:
+        signer_key: str,
+    ) -> dict[str, Any]:
         """Register signer for gasless trading."""
         # Get addresses
         account = EthAccount.from_key(account_key)
@@ -166,55 +166,55 @@ class RiseClient:
                 "nonce": str(nonce),
                 "account_signature": account_signature,
                 "signer_signature": signer_signature,
-            }
+            },
         )
     
-    async def get_markets(self) -> List[Dict[str, Any]]:
+    async def get_markets(self) -> list[dict[str, Any]]:
         """Get available trading markets."""
         response = await self._request("GET", "/v1/markets")
         return response.get("data", {}).get("markets", [])
     
-    async def get_position(self, account: str, market_id: int) -> Dict[str, Any]:
+    async def get_position(self, account: str, market_id: int) -> dict[str, Any]:
         """Get account position for specific market."""
         response = await self._request(
             "GET", "/v1/account/position",
-            params={"account": account, "market_id": market_id}
+            params={"account": account, "market_id": market_id},
         )
         return response.get("data", {}).get("position", {})
     
-    async def get_all_positions(self, account: str) -> List[Dict[str, Any]]:
+    async def get_all_positions(self, account: str) -> list[dict[str, Any]]:
         """Get all positions for account."""
         response = await self._request(
             "GET", "/v1/positions",
-            params={"account": account}
+            params={"account": account},
         )
         # RISE API returns nested structure: {"data": {"positions": [...]}}
         data = response.get("data", {})
         return data.get("positions", [])
     
-    async def get_orders(self, account: str, limit: int = 100) -> List[Dict[str, Any]]:
+    async def get_orders(self, account: str, limit: int = 100) -> list[dict[str, Any]]:
         """Get orders history for account."""
         response = await self._request(
             "GET", "/v1/orders",
-            params={"account": account, "page_size": limit}
+            params={"account": account, "page_size": limit},
         )
         # RISE API returns nested structure: {"data": {"orders": [...]}}
         data = response.get("data", {})
         return data.get("orders", [])
     
-    async def get_balance(self, account: str) -> Dict[str, Any]:
+    async def get_balance(self, account: str) -> dict[str, Any]:
         """Get account balance."""
         # RISE uses cross-margin balance, not token balance
         response = await self._request(
-            "GET", f"/v1/accounts/{account}"
+            "GET", f"/v1/accounts/{account}",
         )
         return response.get("data", {})
     
-    async def get_market_data(self, market_id: int, resolution: str = "1D", limit: int = 100) -> List[Dict[str, Any]]:
+    async def get_market_data(self, market_id: int, resolution: str = "1D", limit: int = 100) -> list[dict[str, Any]]:
         """Get trading view data for a market using the correct endpoint."""
         response = await self._request(
             "GET", f"/v1/markets/id/{market_id}/trading-view-data",
-            params={"resolution": resolution, "limit": limit}
+            params={"resolution": resolution, "limit": limit},
         )
         data = response.get("data", [])
         
@@ -234,11 +234,11 @@ class RiseClient:
             pass
         return None
     
-    async def get_trade_history(self, account: str, limit: int = 50) -> List[Dict[str, Any]]:
+    async def get_trade_history(self, account: str, limit: int = 50) -> list[dict[str, Any]]:
         """Get account trade history."""
         response = await self._request(
             "GET", "/v1/account/trade-history",
-            params={"account": account, "limit": limit}
+            params={"account": account, "limit": limit},
         )
         data = response.get("data", [])
         
@@ -256,8 +256,8 @@ class RiseClient:
         size: float,
         side: str,
         reduce_only: bool = False,
-        check_success: bool = True
-    ) -> Dict[str, Any]:
+        check_success: bool = True,
+    ) -> dict[str, Any]:
         """Simplified market order placement with success detection.
         
         Note: RISE testnet requires limit orders with price=0 for market-like behavior.
@@ -286,7 +286,7 @@ class RiseClient:
             order_type="limit",  # Use limit order with price=0 (works on testnet)
             tif=3,  # IOC for immediate execution
             reduce_only=reduce_only,
-            max_retries=3  # Enable retries for RPC issues
+            max_retries=3,  # Enable retries for RPC issues
         )
         
         # Extract order ID and check for success
@@ -306,7 +306,7 @@ class RiseClient:
                         order_id=order_id,
                         expected_side=side,
                         expected_size=size,
-                        timeout_seconds=10
+                        timeout_seconds=10,
                     )
                     
                     # Add success info to result
@@ -323,7 +323,7 @@ class RiseClient:
         account_key: str,
         signer_key: str,
         market_id: int,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[dict[str, Any]]:
         """Close an entire position using market order.
         
         Args:
@@ -338,14 +338,14 @@ class RiseClient:
         
         # Get current position
         positions = await self.get_all_positions(account.address)
-        position = next((p for p in positions if p.get('market_id') == market_id), None)
+        position = next((p for p in positions if p.get("market_id") == market_id), None)
         
         if not position:
             return None
             
         # Get position size and side
-        size = abs(float(position.get('size', 0)))
-        is_long = float(position.get('size', 0)) > 0
+        size = abs(float(position.get("size", 0)))
+        is_long = float(position.get("size", 0)) > 0
         
         # Place opposite market order to close
         close_side = "sell" if is_long else "buy"
@@ -356,10 +356,10 @@ class RiseClient:
             market_id=market_id,
             size=size,
             side=close_side,
-            reduce_only=True
+            reduce_only=True,
         )
     
-    async def get_market_prices(self) -> Dict[str, float]:
+    async def get_market_prices(self) -> dict[str, float]:
         """Get current market prices for BTC and ETH.
         
         Returns:
@@ -371,19 +371,19 @@ class RiseClient:
             # Get BTC price (market_id=1)
             btc_price = await self.get_latest_price(1)
             if btc_price:
-                prices['BTC'] = btc_price
+                prices["BTC"] = btc_price
                 
             # Get ETH price (market_id=2)
             eth_price = await self.get_latest_price(2)
             if eth_price:
-                prices['ETH'] = eth_price
+                prices["ETH"] = eth_price
                 
         except Exception:
             pass
             
         return prices
     
-    async def calculate_pnl(self, account: str) -> Dict[str, float]:
+    async def calculate_pnl(self, account: str) -> dict[str, float]:
         """Calculate P&L for all positions."""
         try:
             positions = await self.get_all_positions(account)
@@ -419,14 +419,14 @@ class RiseClient:
             
             return {
                 "total_pnl": total_pnl,
-                "positions": position_pnl
+                "positions": position_pnl,
             }
             
         except Exception as e:
             print(f"P&L calculation error: {e}")
             return {"total_pnl": 0.0, "positions": {}}
     
-    async def deposit_usdc(self, account_key: str, amount: float = 100.0) -> Dict[str, Any]:
+    async def deposit_usdc(self, account_key: str, amount: float = 100.0) -> dict[str, Any]:
         """Deposit USDC to account (triggers faucet on testnet)."""
         account = EthAccount.from_key(account_key)
         
@@ -455,8 +455,8 @@ class RiseClient:
                 "Deposit": [
                     {"name": "account", "type": "address"},
                     {"name": "amount", "type": "uint256"},
-                ]
-            }
+                ],
+            },
         }
         
         # Sign with MAIN account private key (not signer!)
@@ -476,13 +476,13 @@ class RiseClient:
                 "signer": account.address,  # For deposits, account signs for itself
                 "deadline": str(deadline),  # API expects strings for numbers
                 "signature": signature,
-                "nonce": str(nonce)  # API expects string for nonce
-            }
+                "nonce": str(nonce),  # API expects string for nonce
+            },
         }
         
         return await self._request(
             "POST", "/v1/account/deposit",
-            json=deposit_request
+            json=deposit_request,
         )
     
     async def place_order(
@@ -498,7 +498,7 @@ class RiseClient:
         post_only: bool = False,
         reduce_only: bool = False,
         max_retries: int = 3,  # Retry for RPC errors
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Place a gasless order.
         
         Args:
@@ -614,7 +614,7 @@ class RiseClient:
                 "deadline": str(deadline),
                 "signature": signature,
                 "nonce": str(nonce),
-            }
+            },
         }
         
         # Retry logic for RPC node issues
@@ -622,7 +622,7 @@ class RiseClient:
             try:
                 return await self._request(
                     "POST", "/v1/orders/place",
-                    json=order_request
+                    json=order_request,
                 )
             except RiseAPIError as e:
                 # Check if this is the specific RPC error that should be retried
@@ -655,12 +655,12 @@ class RiseClient:
                             "This appears to be an RPC node issue. The order parameters are correct. "
                             f"Original error: {e}",
                             e.status_code,
-                            e.details
+                            e.details,
                         )
                 # For other errors, don't retry
                 raise
     
-    def _sign_typed_data(self, typed_data: Dict, private_key: str) -> str:
+    def _sign_typed_data(self, typed_data: dict, private_key: str) -> str:
         """Sign EIP-712 typed data."""
         message = encode_structured_data(typed_data)
         signed = EthAccount.from_key(private_key).sign_message(message)
@@ -706,15 +706,15 @@ class RiseClient:
         await self.close()
     
     # Enhanced API methods for real data
-    async def get_transfer_history(self, account: str, limit: int = 50) -> List[Dict[str, Any]]:
+    async def get_transfer_history(self, account: str, limit: int = 50) -> list[dict[str, Any]]:
         """Get account transfer history."""
         response = await self._request(
             "GET", "/v1/account/transfer-history",
-            params={"account": account, "limit": limit}
+            params={"account": account, "limit": limit},
         )
         return response.get("data", [])
     
-    async def get_account_trade_history(self, account: str, market_id: Optional[int] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    async def get_account_trade_history(self, account: str, market_id: Optional[int] = None, limit: int = 50) -> list[dict[str, Any]]:
         """Get account trade history with optional market filter."""
         params = {"account": account, "limit": limit}
         if market_id is not None:
@@ -722,7 +722,7 @@ class RiseClient:
         
         response = await self._request(
             "GET", "/v1/trade-history", 
-            params=params
+            params=params,
         )
         # Response has trades in a nested data structure
         data = response.get("data", {})
@@ -730,7 +730,7 @@ class RiseClient:
             return data.get("trades", [])
         return []
     
-    async def get_realtime_market_prices(self) -> Dict[str, float]:
+    async def get_realtime_market_prices(self) -> dict[str, float]:
         """Get real-time prices for all markets."""
         markets = await self.get_markets()
         prices = {}
@@ -761,7 +761,7 @@ class RiseClient:
             pass
         return 0.0
     
-    async def get_enhanced_market_data(self) -> Dict[str, Any]:
+    async def get_enhanced_market_data(self) -> dict[str, Any]:
         """Get comprehensive market data with prices and changes."""
         markets = await self.get_markets()
         market_data = {}

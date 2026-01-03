@@ -2,15 +2,13 @@
 """Test API fixes for APIFIXES.md issues."""
 
 import asyncio
-import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from app.api.server import get_profile_summary, list_profiles
 from app.services.storage import JSONStorage
-from app.api.server import list_profiles, get_profile_summary
-from app.models import Account
 
 
 async def test_fixes():

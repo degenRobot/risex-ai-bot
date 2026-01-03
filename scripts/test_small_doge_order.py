@@ -3,15 +3,14 @@
 
 import asyncio
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 # Add project root to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.services.rise_client import RiseClient
 from app.services.storage import JSONStorage
-from app.services.equity_monitor import get_equity_monitor
 
 
 async def test_minimum_sizes():
@@ -26,7 +25,7 @@ async def test_minimum_sizes():
     accounts = storage.get_all_accounts()
     midwit = None
     for acc_id, acc in accounts.items():
-        if acc['persona']['name'] == "Midwit McGee":
+        if acc["persona"]["name"] == "Midwit McGee":
             midwit = acc
             break
     
@@ -38,7 +37,7 @@ async def test_minimum_sizes():
     test_sizes = [0.001, 0.01, 0.1, 1, 10, 100, 1000]
     
     print("Testing DOGE orders:")
-    print(f"DOGE Price: ~$0.128\n")
+    print("DOGE Price: ~$0.128\n")
     
     for size in test_sizes:
         value = size * 0.128
@@ -46,12 +45,12 @@ async def test_minimum_sizes():
         
         try:
             result = await rise_client.place_market_order(
-                account_key=midwit['private_key'],
-                signer_key=midwit['signer_key'],
+                account_key=midwit["private_key"],
+                signer_key=midwit["signer_key"],
                 market_id=5,  # DOGE
                 size=size,
                 side="buy",
-                reduce_only=False
+                reduce_only=False,
             )
             
             if result and "data" in result and result["data"].get("order_id"):
@@ -59,19 +58,19 @@ async def test_minimum_sizes():
                 # Found working size, stop here
                 break
             else:
-                print(f"  ❌ Failed")
+                print("  ❌ Failed")
                 
         except Exception as e:
             error_msg = str(e)
             if "reverted with status 0" in error_msg:
-                print(f"  ❌ Reverted")
+                print("  ❌ Reverted")
             else:
                 print(f"  ❌ Error: {error_msg[:80]}...")
     
     # Try another market - SOL (market_id: 4)
     print("\n" + "="*40)
     print("\nTesting SOL orders:")
-    print(f"SOL Price: ~$127\n")
+    print("SOL Price: ~$127\n")
     
     sol_sizes = [0.001, 0.01, 0.1, 1]
     
@@ -81,24 +80,24 @@ async def test_minimum_sizes():
         
         try:
             result = await rise_client.place_market_order(
-                account_key=midwit['private_key'],
-                signer_key=midwit['signer_key'],
+                account_key=midwit["private_key"],
+                signer_key=midwit["signer_key"],
                 market_id=4,  # SOL
                 size=size,
                 side="buy",
-                reduce_only=False
+                reduce_only=False,
             )
             
             if result and "data" in result and result["data"].get("order_id"):
                 print(f"  ✅ Success! Order ID: {result['data']['order_id']}")
                 break
             else:
-                print(f"  ❌ Failed")
+                print("  ❌ Failed")
                 
         except Exception as e:
             error_msg = str(e)
             if "reverted with status 0" in error_msg:
-                print(f"  ❌ Reverted")
+                print("  ❌ Reverted")
             else:
                 print(f"  ❌ Error: {error_msg[:80]}...")
     
@@ -109,7 +108,7 @@ async def check_market_details():
     """Check detailed market configuration."""
     print("\n=== Market Configuration Details ===\n")
     
-    with open("data/markets.json", "r") as f:
+    with open("data/markets.json") as f:
         markets = json.load(f)
     
     # Check a few markets

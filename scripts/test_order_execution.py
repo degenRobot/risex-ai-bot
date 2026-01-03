@@ -2,15 +2,14 @@
 """Test minimal order execution to debug the async issue."""
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
 # Add project root to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.services.rise_client import RiseClient
 from app.services.equity_monitor import get_equity_monitor
+from app.services.rise_client import RiseClient
 from app.services.storage import JSONStorage
 
 
@@ -60,11 +59,11 @@ async def test_place_order():
             market_id=1,  # BTC
             size=0.001,   # Minimum size
             side="buy",
-            reduce_only=False
+            reduce_only=False,
         )
         
         if result.get("success"):
-            print(f"✅ Order placed successfully!")
+            print("✅ Order placed successfully!")
             print(f"   Order ID: {result['data']['order_id']}")
             print(f"   TX Hash: {result['data']['transaction_hash']}")
         else:
@@ -105,7 +104,7 @@ async def test_ai_tools():
             signer_key=signer_key,
             market="BTC",
             side="buy",
-            size_percent=0.01  # 1% of balance
+            size_percent=0.01,  # 1% of balance
         )
         
         print(f"Tool result: {result}")

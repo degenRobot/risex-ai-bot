@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Debug admin API endpoints."""
 
-import httpx
 import os
+
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,7 +17,7 @@ async def test_admin():
         
         response = await client.get(
             f"{BASE_URL}/api/admin/profiles",
-            headers={"X-API-Key": ADMIN_API_KEY}
+            headers={"X-API-Key": ADMIN_API_KEY},
         )
         
         print(f"Status: {response.status_code}")

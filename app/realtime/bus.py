@@ -3,11 +3,10 @@
 import asyncio
 import logging
 from collections import defaultdict
-from typing import Dict, Optional, Set
+from typing import Optional
 from uuid import UUID
 
 from .events import RealtimeEvent
-
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,7 @@ class EventSubscriber:
         subscriber_id: str,
         queue: asyncio.Queue,
         user_id: Optional[str] = None,
-        profile_subscriptions: Optional[Set[str]] = None
+        profile_subscriptions: Optional[set[str]] = None,
     ):
         self.subscriber_id = subscriber_id
         self.queue = queue
@@ -52,11 +51,11 @@ class EventBus:
     
     def __init__(self, max_queue_size: int = 100):
         self.max_queue_size = max_queue_size
-        self._subscribers: Dict[str, EventSubscriber] = {}
-        self._profile_subscribers: Dict[str, Set[str]] = defaultdict(set)
-        self._global_subscribers: Set[str] = set()
+        self._subscribers: dict[str, EventSubscriber] = {}
+        self._profile_subscribers: dict[str, set[str]] = defaultdict(set)
+        self._global_subscribers: set[str] = set()
         self._lock = asyncio.Lock()
-        self._event_history: Dict[UUID, RealtimeEvent] = {}
+        self._event_history: dict[UUID, RealtimeEvent] = {}
         self._max_history_size = 1000
         
         logger.info("EventBus initialized")
@@ -64,7 +63,7 @@ class EventBus:
     async def subscribe_global(
         self, 
         subscriber_id: str, 
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
     ) -> asyncio.Queue:
         """Subscribe to all events."""
         async with self._lock:
@@ -86,7 +85,7 @@ class EventBus:
         self, 
         subscriber_id: str,
         profile_id: str,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
     ) -> asyncio.Queue:
         """Subscribe to events for a specific profile."""
         async with self._lock:
@@ -104,7 +103,7 @@ class EventBus:
                 subscriber_id, 
                 queue, 
                 user_id,
-                profile_subscriptions={profile_id}
+                profile_subscriptions={profile_id},
             )
             
             self._subscribers[subscriber_id] = subscriber
@@ -116,7 +115,7 @@ class EventBus:
     async def unsubscribe(
         self, 
         subscriber_id: str, 
-        profile_id: Optional[str] = None
+        profile_id: Optional[str] = None,
     ) -> bool:
         """Unsubscribe from events."""
         async with self._lock:
@@ -200,7 +199,7 @@ class EventBus:
     async def get_missed_events(
         self, 
         subscriber_id: str, 
-        after_event_id: Optional[UUID] = None
+        after_event_id: Optional[UUID] = None,
     ) -> list[RealtimeEvent]:
         """Get events that a subscriber may have missed."""
         async with self._lock:
@@ -213,7 +212,7 @@ class EventBus:
             # Sort events by timestamp
             sorted_events = sorted(
                 self._event_history.values(),
-                key=lambda e: e.timestamp
+                key=lambda e: e.timestamp,
             )
             
             # Find events after the specified ID
@@ -229,7 +228,7 @@ class EventBus:
             
             return missed_events
     
-    def get_subscriber_count(self) -> Dict[str, int]:
+    def get_subscriber_count(self) -> dict[str, int]:
         """Get count of subscribers by type."""
         return {
             "total": len(self._subscribers),
@@ -237,7 +236,7 @@ class EventBus:
             "profiles": len(self._profile_subscribers),
             "queued_events": sum(
                 sub.queue.qsize() for sub in self._subscribers.values()
-            )
+            ),
         }
     
     async def clear_subscriber(self, subscriber_id: str):
@@ -263,7 +262,7 @@ async def publish_event(event: RealtimeEvent) -> int:
 async def subscribe_to_profile(
     subscriber_id: str, 
     profile_id: str,
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
 ) -> asyncio.Queue:
     """Subscribe to events for a specific profile."""
     return await BUS.subscribe_profile(subscriber_id, profile_id, user_id)
@@ -271,7 +270,7 @@ async def subscribe_to_profile(
 
 async def subscribe_globally(
     subscriber_id: str,
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
 ) -> asyncio.Queue:
     """Subscribe to all events."""
     return await BUS.subscribe_global(subscriber_id, user_id)

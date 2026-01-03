@@ -1,16 +1,16 @@
 """Tests for the event bus system."""
 
 import asyncio
+
 import pytest
-from uuid import uuid4
 
 from app.realtime.bus import EventBus
 from app.realtime.events import (
-    RealtimeEvent,
-    EventType,
     EventMetadata,
+    EventType,
+    RealtimeEvent,
+    create_chat_message,
     create_market_update,
-    create_chat_message
 )
 
 
@@ -76,7 +76,7 @@ async def test_message_deduplication(event_bus):
     event = RealtimeEvent(
         type=EventType.CHAT_USER_MESSAGE,
         payload={"content": "Test message"},
-        metadata=EventMetadata(sender_id=user_id)
+        metadata=EventMetadata(sender_id=user_id),
     )
     recipients = await event_bus.publish(event)
     
@@ -88,7 +88,7 @@ async def test_message_deduplication(event_bus):
     event2 = RealtimeEvent(
         type=EventType.CHAT_USER_MESSAGE,
         payload={"content": "Other message"},
-        metadata=EventMetadata(sender_id="other-user")
+        metadata=EventMetadata(sender_id="other-user"),
     )
     recipients2 = await event_bus.publish(event2)
     
@@ -174,7 +174,7 @@ async def test_missed_events_replay(event_bus):
     # Publish events
     events = []
     for i in range(5):
-        event = create_market_update(f"BTC", 95000 + i, 0.01, 1000000)
+        event = create_market_update("BTC", 95000 + i, 0.01, 1000000)
         events.append(event)
         await event_bus.publish(event)
     

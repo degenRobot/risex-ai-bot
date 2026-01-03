@@ -5,11 +5,11 @@ Tests all endpoints with proper assertions and error handling.
 """
 
 import asyncio
-import httpx
 import json
 import os
 from datetime import datetime
-from typing import Dict, Optional
+
+import httpx
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -33,7 +33,7 @@ class APITestSuite:
         self.results = {
             "timestamp": datetime.now().isoformat(),
             "base_url": self.base_url,
-            "tests": {}
+            "tests": {},
         }
     
     async def run_all_tests(self):
@@ -73,14 +73,14 @@ class APITestSuite:
                 
                 self.results["tests"]["health_check"] = {
                     "status": "✅ PASSED",
-                    "response": data
+                    "response": data,
                 }
                 print("✅ Health check passed")
                 
             except Exception as e:
                 self.results["tests"]["health_check"] = {
                     "status": "❌ FAILED",
-                    "error": str(e)
+                    "error": str(e),
                 }
                 print(f"❌ Health check failed: {e}")
     
@@ -106,14 +106,14 @@ class APITestSuite:
                 self.results["tests"]["list_profiles"] = {
                     "status": "✅ PASSED",
                     "profile_count": len(data),
-                    "sample": profile
+                    "sample": profile,
                 }
                 print(f"✅ List profiles passed ({len(data)} profiles)")
                 
             except Exception as e:
                 self.results["tests"]["list_profiles"] = {
                     "status": "❌ FAILED",
-                    "error": str(e)
+                    "error": str(e),
                 }
                 print(f"❌ List profiles failed: {e}")
     
@@ -135,15 +135,15 @@ class APITestSuite:
                     "profile": {
                         "handle": data["handle"],
                         "name": data["name"],
-                        "trading_style": data["trading_style"]
-                    }
+                        "trading_style": data["trading_style"],
+                    },
                 }
                 print("✅ Get profile by handle passed")
                 
             except Exception as e:
                 self.results["tests"]["get_profile_by_handle"] = {
                     "status": "❌ FAILED",
-                    "error": str(e)
+                    "error": str(e),
                 }
                 print(f"❌ Get profile by handle failed: {e}")
     
@@ -158,8 +158,8 @@ class APITestSuite:
                     f"{self.base_url}/api/profiles/{TEST_ACCOUNT_ID}/chat",
                     json={
                         "message": "Bitcoin breaking 100k today. Time to go long.",
-                        "chatHistory": ""
-                    }
+                        "chatHistory": "",
+                    },
                 )
                 
                 assert response.status_code == 200
@@ -173,7 +173,7 @@ class APITestSuite:
                     "status": "✅ PASSED",
                     "response_preview": data["response"][:100] + "...",
                     "updates": data["profileUpdates"],
-                    "session_id": data["sessionId"]
+                    "session_id": data["sessionId"],
                 }
                 print("✅ Chat (bullish) passed")
                 
@@ -182,8 +182,8 @@ class APITestSuite:
                     f"{self.base_url}/api/profiles/{TEST_ACCOUNT_ID}/chat",
                     json={
                         "message": "Market crash incoming. Bitcoin to 50k.",
-                        "chatHistory": ""
-                    }
+                        "chatHistory": "",
+                    },
                 )
                 
                 assert response.status_code == 200
@@ -192,14 +192,14 @@ class APITestSuite:
                 self.results["tests"]["chat_bearish"] = {
                     "status": "✅ PASSED",
                     "response_preview": data["response"][:100] + "...",
-                    "updates": data["profileUpdates"]
+                    "updates": data["profileUpdates"],
                 }
                 print("✅ Chat (bearish) passed")
                 
             except Exception as e:
                 self.results["tests"]["chat_with_profile"] = {
                     "status": "❌ FAILED",
-                    "error": str(e)
+                    "error": str(e),
                 }
                 print(f"❌ Chat with profile failed: {e}")
     
@@ -210,7 +210,7 @@ class APITestSuite:
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.get(
-                    f"{self.base_url}/api/profiles/{TEST_ACCOUNT_ID}/summary"
+                    f"{self.base_url}/api/profiles/{TEST_ACCOUNT_ID}/summary",
                 )
                 
                 assert response.status_code == 200
@@ -219,14 +219,14 @@ class APITestSuite:
                 self.results["tests"]["profile_summary"] = {
                     "status": "✅ PASSED",
                     "has_thinking": "currentThinking" in data,
-                    "has_persona": "basePersona" in data
+                    "has_persona": "basePersona" in data,
                 }
                 print("✅ Get profile summary passed")
                 
             except Exception as e:
                 self.results["tests"]["profile_summary"] = {
                     "status": "❌ FAILED",
-                    "error": str(e)
+                    "error": str(e),
                 }
                 print(f"❌ Get profile summary failed: {e}")
     
@@ -237,7 +237,7 @@ class APITestSuite:
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.get(
-                    f"{self.base_url}/api/profiles/{TEST_ACCOUNT_ID}/context"
+                    f"{self.base_url}/api/profiles/{TEST_ACCOUNT_ID}/context",
                 )
                 
                 assert response.status_code == 200
@@ -248,14 +248,14 @@ class APITestSuite:
                 self.results["tests"]["profile_context"] = {
                     "status": "✅ PASSED",
                     "profile_name": data["profile_name"],
-                    "context": data["trading_context"]
+                    "context": data["trading_context"],
                 }
                 print("✅ Get profile context passed")
                 
             except Exception as e:
                 self.results["tests"]["profile_context"] = {
                     "status": "❌ FAILED",
-                    "error": str(e)
+                    "error": str(e),
                 }
                 print(f"❌ Get profile context failed: {e}")
     
@@ -267,7 +267,7 @@ class APITestSuite:
             print("⚠️  No admin API key in .env, skipping admin tests")
             self.results["tests"]["admin_endpoints"] = {
                 "status": "⚠️  SKIPPED",
-                "reason": "No ADMIN_API_KEY in environment"
+                "reason": "No ADMIN_API_KEY in environment",
             }
             return
         
@@ -278,7 +278,7 @@ class APITestSuite:
             try:
                 response = await client.get(
                     f"{self.base_url}/api/admin/profiles",
-                    headers=headers
+                    headers=headers,
                 )
                 
                 assert response.status_code == 200
@@ -288,14 +288,14 @@ class APITestSuite:
                 
                 self.results["tests"]["admin_list_profiles"] = {
                     "status": "✅ PASSED",
-                    "total_profiles": data["total"]
+                    "total_profiles": data["total"],
                 }
                 print(f"✅ Admin list profiles passed ({data['total']} profiles)")
                 
             except Exception as e:
                 self.results["tests"]["admin_list_profiles"] = {
                     "status": "❌ FAILED",
-                    "error": str(e)
+                    "error": str(e),
                 }
                 print(f"❌ Admin list profiles failed: {e}")
             
@@ -303,28 +303,28 @@ class APITestSuite:
             try:
                 response = await client.get(
                     f"{self.base_url}/api/admin/profiles/{TEST_ACCOUNT_ID}/balance",
-                    headers=headers
+                    headers=headers,
                 )
                 
                 if response.status_code == 200:
                     data = response.json()
                     self.results["tests"]["admin_get_balance"] = {
                         "status": "✅ PASSED",
-                        "balance": data.get("balance", 0)
+                        "balance": data.get("balance", 0),
                     }
                     print("✅ Admin get balance passed")
                 else:
                     self.results["tests"]["admin_get_balance"] = {
                         "status": "⚠️  WARNING",
                         "reason": "Account not whitelisted on RISE",
-                        "status_code": response.status_code
+                        "status_code": response.status_code,
                     }
                     print("⚠️  Admin get balance: Account not whitelisted")
                     
             except Exception as e:
                 self.results["tests"]["admin_get_balance"] = {
                     "status": "❌ FAILED",
-                    "error": str(e)
+                    "error": str(e),
                 }
                 print(f"❌ Admin get balance failed: {e}")
     
@@ -336,20 +336,20 @@ class APITestSuite:
             # Test 404 - Invalid profile
             try:
                 response = await client.get(
-                    f"{self.base_url}/api/profiles/invalid_handle"
+                    f"{self.base_url}/api/profiles/invalid_handle",
                 )
                 assert response.status_code == 404
                 
                 self.results["tests"]["error_404"] = {
                     "status": "✅ PASSED",
-                    "message": "Correctly returns 404 for invalid profile"
+                    "message": "Correctly returns 404 for invalid profile",
                 }
                 print("✅ 404 error handling passed")
                 
             except Exception as e:
                 self.results["tests"]["error_404"] = {
                     "status": "❌ FAILED",
-                    "error": str(e)
+                    "error": str(e),
                 }
                 print(f"❌ 404 error handling failed: {e}")
             
@@ -357,20 +357,20 @@ class APITestSuite:
             try:
                 response = await client.get(
                     f"{self.base_url}/api/admin/profiles",
-                    headers={"X-API-Key": "invalid_key"}
+                    headers={"X-API-Key": "invalid_key"},
                 )
                 assert response.status_code == 401
                 
                 self.results["tests"]["error_401"] = {
                     "status": "✅ PASSED",
-                    "message": "Correctly returns 401 for invalid API key"
+                    "message": "Correctly returns 401 for invalid API key",
                 }
                 print("✅ 401 error handling passed")
                 
             except Exception as e:
                 self.results["tests"]["error_401"] = {
                     "status": "❌ FAILED",
-                    "error": str(e)
+                    "error": str(e),
                 }
                 print(f"❌ 401 error handling failed: {e}")
     

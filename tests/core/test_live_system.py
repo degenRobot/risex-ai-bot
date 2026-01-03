@@ -3,17 +3,16 @@
 
 import asyncio
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
-import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from app.services.profile_chat import ProfileChatService
 from app.services.rise_client import RiseClient
 from app.services.storage import JSONStorage
-from app.services.profile_chat import ProfileChatService
 from app.services.thought_process import ThoughtProcessManager
-from app.trader_profiles import CYNICAL_USER, LEFT_CURVE
 
 
 async def test_markets_and_positions():
@@ -63,14 +62,14 @@ async def test_markets_and_positions():
             print(f"   Market {market_id}: {symbol} - ${last_price:,.2f} ({change_24h:+.2f})")
         
         # Check positions on major markets
-        print(f"\n📍 Current Positions:")
+        print("\n📍 Current Positions:")
         total_positions = 0
         
         for market_id in ["1", "2", "4", "7", "8"]:  # BTC, ETH, SOL, SPY, TSLA
             try:
                 response = await client._request(
                     "GET", "/v1/account/position",
-                    params={"account": test_account.address, "market_id": int(market_id)}
+                    params={"account": test_account.address, "market_id": int(market_id)},
                 )
                 
                 position = response.get("data", {}).get("position", {})
@@ -118,7 +117,7 @@ async def test_chat_simulation():
     leftcurve_account = None
     
     for account in storage.list_accounts():
-        if hasattr(account.persona, 'handle'):
+        if hasattr(account.persona, "handle"):
             if account.persona.handle == "cynicalUser":
                 cynical_account = account
             elif account.persona.handle == "leftCurve":
@@ -142,18 +141,18 @@ async def test_chat_simulation():
         {
             "message": "BREAKING: Fed announces emergency rate cut! Risk assets mooning!",
             "expected_cynical": "skeptical",
-            "expected_leftcurve": "bullish"
+            "expected_leftcurve": "bullish",
         },
         {
             "message": "ETH just broke $3000! Next stop $5000? What are you doing?",
             "expected_cynical": "bearish",
-            "expected_leftcurve": "fomo"
+            "expected_leftcurve": "fomo",
         },
         {
             "message": "Huge whale just dumped 1000 BTC! Market crash incoming?",
             "expected_cynical": "told_you_so",
-            "expected_leftcurve": "panic"
-        }
+            "expected_leftcurve": "panic",
+        },
     ]
     
     for persona_type, account in test_accounts:
@@ -166,11 +165,11 @@ async def test_chat_simulation():
                 # Send chat message
                 result = await chat_service.chat_with_profile(
                     account_id=account.id,
-                    user_message=news['message'],
-                    chat_history=""
+                    user_message=news["message"],
+                    chat_history="",
                 )
                 
-                response = result.get('response', 'No response')
+                response = result.get("response", "No response")
                 print(f"   🤖 Response: {response[:150]}...")
                 
                 # Check if response matches expected sentiment
@@ -186,7 +185,7 @@ async def test_chat_simulation():
                 await asyncio.sleep(1)
                 recent_thoughts = await thought_manager.get_recent_thoughts(
                     account.id, 
-                    minutes=1
+                    minutes=1,
                 )
                 
                 if recent_thoughts:
@@ -214,7 +213,7 @@ async def test_data_flow():
         file_path = data_dir / filename
         if not file_path.exists():
             print(f"   Creating {filename}...")
-            with open(file_path, 'w') as f:
+            with open(file_path, "w") as f:
                 json.dump({}, f)
     
     # Test data persistence
@@ -233,13 +232,13 @@ async def test_data_flow():
             source="system_test",
             content=f"Test entry at {datetime.now()}",
             impact="Testing data persistence",
-            confidence=0.5
+            confidence=0.5,
         )
         
         # Verify it was saved
         recent_thoughts = await thought_manager.get_recent_thoughts(
             test_account.id,
-            minutes=1
+            minutes=1,
         )
         
         if recent_thoughts:
@@ -250,6 +249,7 @@ async def test_data_flow():
     # Check API server status
     print("\n   Testing API endpoints...")
     from httpx import AsyncClient
+
     from app.api.server import app
     
     async with AsyncClient(app=app, base_url="http://test") as client:

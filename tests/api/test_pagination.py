@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Test API pagination and account_id inclusion."""
 
-import requests
 import json
+
+import requests
 
 BASE_URL = "http://localhost:8000"
 
@@ -16,7 +17,7 @@ def test_paginated_profiles():
     assert response.status_code == 200
     
     data = response.json()
-    print(f"\nDefault pagination response:")
+    print("\nDefault pagination response:")
     print(json.dumps(data, indent=2))
     
     assert "profiles" in data

@@ -1,22 +1,22 @@
 """Test trading action queue functionality."""
 
-import pytest
 import asyncio
 import os
 import sys
 import uuid
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
+
+import pytest
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from app.trading.actions import (
-    TradingActionQueue,
-    PendingAction,
-    ActionType,
     ActionPriority,
-    get_action_queue
+    ActionType,
+    PendingAction,
+    TradingActionQueue,
 )
 
 
@@ -39,7 +39,7 @@ class TestActionQueue:
             symbol="BTC",
             side="buy",
             size=0.001,
-            reasoning="Test trade"
+            reasoning="Test trade",
         )
         
         success = await queue.add_action(action)
@@ -54,7 +54,7 @@ class TestActionQueue:
             symbol="BTC",
             side="buy",
             size=0.002,
-            reasoning="Duplicate test"
+            reasoning="Duplicate test",
         )
         
         success = await queue.add_action(duplicate)
@@ -75,7 +75,7 @@ class TestActionQueue:
             priority=ActionPriority.HIGH,
             symbol="ETH",
             side="sell",
-            size=0.1
+            size=0.1,
         )
         await queue.add_action(immediate)
         
@@ -89,7 +89,7 @@ class TestActionQueue:
             side="buy",
             size=5,
             price=150.0,
-            not_before=datetime.now() + timedelta(minutes=5)
+            not_before=datetime.now() + timedelta(minutes=5),
         )
         await queue.add_action(delayed)
         
@@ -113,7 +113,7 @@ class TestActionQueue:
             action_type=ActionType.REBALANCE,
             priority=ActionPriority.LOW,
             symbol="LINK",
-            side="buy"
+            side="buy",
         )
         await queue.add_action(low)
         
@@ -123,7 +123,7 @@ class TestActionQueue:
             action_type=ActionType.STOP_LOSS,
             priority=ActionPriority.CRITICAL,
             symbol="BTC",
-            side="sell"
+            side="sell",
         )
         await queue.add_action(critical)
         
@@ -133,7 +133,7 @@ class TestActionQueue:
             action_type=ActionType.MARKET_ORDER,
             priority=ActionPriority.NORMAL,
             symbol="ETH",
-            side="buy"
+            side="buy",
         )
         await queue.add_action(normal)
         
@@ -186,7 +186,7 @@ class TestActionQueue:
             priority=ActionPriority.NORMAL,
             symbol="BTC",
             side="buy",
-            size=0.001
+            size=0.001,
         )
         
         await queue.add_action(action)
@@ -212,7 +212,7 @@ class TestActionQueue:
             priority=ActionPriority.NORMAL,
             symbol="ETH",
             side="sell",
-            size=0.1
+            size=0.1,
         )
         
         await queue.add_action(action)
@@ -242,17 +242,17 @@ class TestActionQueue:
                 action_type=ActionType.MARKET_ORDER if i % 2 else ActionType.LIMIT_ORDER,
                 priority=ActionPriority.NORMAL,
                 symbol="BTC",
-                side="buy"
+                side="buy",
             )
             queue._actions[action.id] = action
             
         stats = queue.get_queue_stats()
         
-        assert stats['total_actions'] == 5
-        assert stats['by_type']['MARKET_ORDER'] == 2
-        assert stats['by_type']['LIMIT_ORDER'] == 3
-        assert stats['by_priority']['NORMAL'] == 5
-        assert len(stats['by_profile']) == 2
+        assert stats["total_actions"] == 5
+        assert stats["by_type"]["MARKET_ORDER"] == 2
+        assert stats["by_type"]["LIMIT_ORDER"] == 3
+        assert stats["by_priority"]["NORMAL"] == 5
+        assert len(stats["by_profile"]) == 2
         
 
 async def run_async_tests():

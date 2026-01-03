@@ -337,7 +337,7 @@ Headers: X-API-Key: {your_api_key}
 
 ### Create New Profile
 ```bash
-POST /api/admin/profiles
+POST /api/admin/profiles  (Currently Disabled - Returns 501)
 Headers: X-API-Key: {your_api_key}
 ```
 

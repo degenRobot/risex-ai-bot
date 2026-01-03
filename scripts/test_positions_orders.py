@@ -4,7 +4,6 @@
 import asyncio
 import os
 import sys
-from datetime import datetime
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -41,28 +40,28 @@ async def test_positions_orders():
             print("\n1️⃣ Direct API Calls:")
             
             # Get positions
-            positions = await rise_client.get_all_positions(account['address'])
+            positions = await rise_client.get_all_positions(account["address"])
             print(f"   Positions: {len(positions)} found")
             if positions:
                 for pos in positions[:2]:  # Show first 2
-                    market_id = pos.get('market_id')
-                    side = pos.get('side')
-                    size = float(pos.get('size', 0)) / 10**18
+                    market_id = pos.get("market_id")
+                    side = pos.get("side")
+                    size = float(pos.get("size", 0)) / 10**18
                     print(f"   - Market {market_id}: {side} {size:.6f}")
             
             # Get orders
-            orders = await rise_client.get_orders(account['address'], limit=10)
+            orders = await rise_client.get_orders(account["address"], limit=10)
             print(f"   Orders: {len(orders)} found")
             if orders:
                 for order in orders[:2]:  # Show first 2
-                    market_id = order.get('market_id')
-                    side = order.get('side')
-                    status = order.get('status')
+                    market_id = order.get("market_id")
+                    side = order.get("side")
+                    status = order.get("status")
                     print(f"   - Market {market_id}: {side} ({status})")
             
             # Test equity monitor method
             print("\n2️⃣ Equity Monitor Method:")
-            data = await equity_monitor.fetch_equity_margin_and_positions(account['address'])
+            data = await equity_monitor.fetch_equity_margin_and_positions(account["address"])
             
             print(f"   Equity: ${data.get('equity', 0):,.2f}")
             print(f"   Free Margin: ${data.get('free_margin', 0):,.2f}")
@@ -71,7 +70,7 @@ async def test_positions_orders():
             
             # Test update method
             print("\n3️⃣ Update Account Data:")
-            success = await equity_monitor.update_account_equity(account_id, account['address'])
+            success = await equity_monitor.update_account_equity(account_id, account["address"])
             if success:
                 print("   ✅ Account data updated successfully")
                 

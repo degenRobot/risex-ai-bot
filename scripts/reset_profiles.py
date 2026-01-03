@@ -8,9 +8,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.services.storage import JSONStorage
 from app.services.account_creator import create_fresh_profile
 from app.services.equity_monitor import get_equity_monitor
+from app.services.storage import JSONStorage
 
 
 async def main():
@@ -29,7 +29,7 @@ async def main():
     # Step 2: Clear all accounts
     print("\n2. Clearing all existing accounts...")
     accounts_file = storage.accounts_file
-    with open(accounts_file, 'w') as f:
+    with open(accounts_file, "w") as f:
         json.dump({}, f, indent=2)
     print("✅ All accounts cleared")
     
@@ -37,7 +37,7 @@ async def main():
     profiles = [
         ("cynical", "Bear Trader Bob", 1000.0),     # Conservative, skeptical
         ("leftCurve", "Degen Dave", 1000.0),        # Aggressive, easily influenced
-        ("midwit", "Technical Terry", 1000.0)       # Overconfident analyst
+        ("midwit", "Technical Terry", 1000.0),       # Overconfident analyst
     ]
     
     created_profiles = []
@@ -48,7 +48,7 @@ async def main():
         try:
             account_id, account = await create_fresh_profile(
                 personality_type=personality,
-                deposit_amount=deposit
+                deposit_amount=deposit,
             )
             
             # Update the name for clarity
@@ -60,7 +60,7 @@ async def main():
                 "name": nickname,
                 "personality": personality,
                 "address": account.address,
-                "deposit": deposit
+                "deposit": deposit,
             })
             
             print(f"✅ Created: {nickname}")

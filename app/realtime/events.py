@@ -1,8 +1,8 @@
 """Realtime event models and types for WebSocket streaming."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -62,13 +62,13 @@ class RealtimeEvent(BaseModel):
     """Base model for all realtime events."""
     
     id: UUID = Field(default_factory=uuid4, description="Unique event ID")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="UTC timestamp")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC), description="UTC timestamp")
     type: EventType = Field(..., description="Event type")
     profile_id: Optional[str] = Field(None, description="Profile ID this event relates to")
-    payload: Dict[str, Any] = Field(default_factory=dict, description="Event-specific data")
+    payload: dict[str, Any] = Field(default_factory=dict, description="Event-specific data")
     metadata: EventMetadata = Field(default_factory=EventMetadata, description="Event metadata")
     
-    def to_json(self) -> Dict[str, Any]:
+    def to_json(self) -> dict[str, Any]:
         """Convert event to JSON-serializable dict."""
         return {
             "id": str(self.id),
@@ -76,11 +76,11 @@ class RealtimeEvent(BaseModel):
             "type": self.type.value,
             "profile_id": self.profile_id,
             "payload": self.payload,
-            "metadata": self.metadata.model_dump(exclude_none=True)
+            "metadata": self.metadata.model_dump(exclude_none=True),
         }
     
     @classmethod
-    def from_json(cls, data: Dict[str, Any]) -> "RealtimeEvent":
+    def from_json(cls, data: dict[str, Any]) -> "RealtimeEvent":
         """Create event from JSON dict."""
         return cls(
             id=UUID(data["id"]),
@@ -88,7 +88,7 @@ class RealtimeEvent(BaseModel):
             type=EventType(data["type"]),
             profile_id=data.get("profile_id"),
             payload=data.get("payload", {}),
-            metadata=EventMetadata(**data.get("metadata", {}))
+            metadata=EventMetadata(**data.get("metadata", {})),
         )
 
 
@@ -100,7 +100,7 @@ def create_market_update(
     change_24h: float,
     volume_24h: float,
     funding_rate: Optional[float] = None,
-    **kwargs
+    **kwargs,
 ) -> RealtimeEvent:
     """Create a market update event."""
     return RealtimeEvent(
@@ -111,8 +111,8 @@ def create_market_update(
             "change_24h": change_24h,
             "volume_24h": volume_24h,
             "funding_rate": funding_rate,
-            **kwargs
-        }
+            **kwargs,
+        },
     )
 
 
@@ -121,7 +121,7 @@ def create_chat_message(
     sender_id: str,
     message_id: str,
     content: str,
-    role: str = "user"
+    role: str = "user",
 ) -> RealtimeEvent:
     """Create a chat message event."""
     return RealtimeEvent(
@@ -130,19 +130,19 @@ def create_chat_message(
         payload={
             "content": content,
             "role": role,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(UTC).isoformat(),
         },
         metadata=EventMetadata(
             sender_id=sender_id,
-            message_id=message_id
-        )
+            message_id=message_id,
+        ),
     )
 
 
 def create_chat_stream_start(
     profile_id: str,
     message_id: str,
-    correlation_id: str
+    correlation_id: str,
 ) -> RealtimeEvent:
     """Create a chat streaming start event."""
     return RealtimeEvent(
@@ -150,12 +150,12 @@ def create_chat_stream_start(
         profile_id=profile_id,
         payload={
             "message_id": message_id,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(UTC).isoformat(),
         },
         metadata=EventMetadata(
             message_id=message_id,
-            correlation_id=correlation_id
-        )
+            correlation_id=correlation_id,
+        ),
     )
 
 
@@ -164,7 +164,7 @@ def create_chat_stream_chunk(
     message_id: str,
     chunk_content: str,
     chunk_index: int,
-    correlation_id: str
+    correlation_id: str,
 ) -> RealtimeEvent:
     """Create a chat streaming chunk event."""
     return RealtimeEvent(
@@ -172,13 +172,13 @@ def create_chat_stream_chunk(
         profile_id=profile_id,
         payload={
             "content": chunk_content,
-            "chunk_index": chunk_index
+            "chunk_index": chunk_index,
         },
         metadata=EventMetadata(
             message_id=message_id,
             chunk_index=chunk_index,
-            correlation_id=correlation_id
-        )
+            correlation_id=correlation_id,
+        ),
     )
 
 
@@ -187,7 +187,7 @@ def create_chat_stream_final(
     message_id: str,
     full_content: str,
     correlation_id: str,
-    total_chunks: int
+    total_chunks: int,
 ) -> RealtimeEvent:
     """Create a chat streaming completion event."""
     return RealtimeEvent(
@@ -196,13 +196,13 @@ def create_chat_stream_final(
         payload={
             "content": full_content,
             "message_id": message_id,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(UTC).isoformat(),
         },
         metadata=EventMetadata(
             message_id=message_id,
             correlation_id=correlation_id,
-            total_chunks=total_chunks
-        )
+            total_chunks=total_chunks,
+        ),
     )
 
 
@@ -213,7 +213,7 @@ def create_trade_decision(
     action: str,
     size: float,
     reason: str,
-    confidence: float
+    confidence: float,
 ) -> RealtimeEvent:
     """Create a trading decision event."""
     return RealtimeEvent(
@@ -226,8 +226,8 @@ def create_trade_decision(
             "size": size,
             "reason": reason,
             "confidence": confidence,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
+            "timestamp": datetime.now(UTC).isoformat(),
+        },
     )
 
 
@@ -237,7 +237,7 @@ def create_account_update(
     equity: float,
     free_margin: float,
     positions_count: int,
-    total_pnl: float
+    total_pnl: float,
 ) -> RealtimeEvent:
     """Create an account update event."""
     return RealtimeEvent(
@@ -249,6 +249,6 @@ def create_account_update(
             "free_margin": free_margin,
             "positions_count": positions_count,
             "total_pnl": total_pnl,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
+            "timestamp": datetime.now(UTC).isoformat(),
+        },
     )

@@ -1,6 +1,5 @@
 """Integration tests for the realtime WebSocket system."""
 
-import asyncio
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -8,10 +7,10 @@ from fastapi.testclient import TestClient
 from app.api.server import app
 from app.realtime.bus import BUS, publish_event
 from app.realtime.events import (
-    create_market_update,
+    create_account_update,
     create_chat_message,
+    create_market_update,
     create_trade_decision,
-    create_account_update
 )
 
 
@@ -64,7 +63,7 @@ async def test_event_flow_integration():
         action="buy",
         size=0.1,
         reason="Integration test trade",
-        confidence=0.9
+        confidence=0.9,
     )
     await publish_event(trade_event)
     
@@ -75,7 +74,7 @@ async def test_event_flow_integration():
         equity=10000,
         free_margin=8000,
         positions_count=1,
-        total_pnl=100
+        total_pnl=100,
     )
     await publish_event(account_event)
     
@@ -95,7 +94,7 @@ async def test_chat_message_flow():
         sender_id="user-123",
         message_id="msg-001",
         content="What's your market outlook?",
-        role="user"
+        role="user",
     )
     await publish_event(user_msg)
     

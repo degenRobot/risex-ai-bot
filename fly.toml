@@ -24,6 +24,11 @@ kill_timeout = 30
   auto_start_machines = true
   min_machines_running = 1
   processes = ["app"]
+  
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
 
   [[http_service.checks]]
     interval = "30s"
@@ -41,5 +46,5 @@ kill_timeout = 30
 [[vm]]
   cpu_kind = "shared"
   cpus = 1
-  memory_mb = 512
+  memory_mb = 512  # Increase to 1024 if running many profiles
   processes = ["app"]

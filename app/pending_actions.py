@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Dict, Optional, Any, List
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -46,7 +46,7 @@ class TriggerCondition(BaseModel):
     value2: Optional[float] = None  # For BETWEEN operator
     market: Optional[str] = None  # For price conditions (e.g., "BTC", "ETH")
     
-    def evaluate(self, context: Dict[str, Any]) -> bool:
+    def evaluate(self, context: dict[str, Any]) -> bool:
         """Evaluate if condition is met given context."""
         # Get the value to check
         if self.field == "price" and self.market:
@@ -85,7 +85,7 @@ class ActionParams(BaseModel):
     size: Optional[float] = None  # Absolute size
     price: Optional[float] = None  # For limit orders
     reduce_percent: Optional[float] = None  # For partial close
-    custom_data: Optional[Dict[str, Any]] = None
+    custom_data: Optional[dict[str, Any]] = None
 
 
 class PendingAction(BaseModel):
@@ -102,7 +102,7 @@ class PendingAction(BaseModel):
     triggered_at: Optional[datetime] = None
     executed_at: Optional[datetime] = None
     error_message: Optional[str] = None
-    result: Optional[Dict[str, Any]] = None
+    result: Optional[dict[str, Any]] = None
     reasoning: Optional[str] = None
     
     def is_expired(self) -> bool:
@@ -111,7 +111,7 @@ class PendingAction(BaseModel):
             return True
         return False
     
-    def should_trigger(self, context: Dict[str, Any]) -> bool:
+    def should_trigger(self, context: dict[str, Any]) -> bool:
         """Check if action should be triggered given current context."""
         if self.status != ActionStatus.PENDING:
             return False
@@ -126,7 +126,7 @@ class PendingAction(BaseModel):
         self.status = ActionStatus.TRIGGERED
         self.triggered_at = datetime.now()
     
-    def mark_executed(self, result: Dict[str, Any]):
+    def mark_executed(self, result: dict[str, Any]):
         """Mark action as successfully executed."""
         self.status = ActionStatus.EXECUTED
         self.executed_at = datetime.now()
@@ -144,13 +144,13 @@ class PendingActionSummary(BaseModel):
     persona_name: str
     total_actions: int
     pending: int
-    stop_losses: List[Dict[str, Any]]
-    take_profits: List[Dict[str, Any]]
-    limit_orders: List[Dict[str, Any]]
-    other_actions: List[Dict[str, Any]]
+    stop_losses: list[dict[str, Any]]
+    take_profits: list[dict[str, Any]]
+    limit_orders: list[dict[str, Any]]
+    other_actions: list[dict[str, Any]]
     
     @classmethod
-    def from_actions(cls, account_id: str, persona_name: str, actions: List[PendingAction]):
+    def from_actions(cls, account_id: str, persona_name: str, actions: list[PendingAction]):
         """Create summary from list of actions."""
         pending_actions = [a for a in actions if a.status == ActionStatus.PENDING]
         
@@ -164,7 +164,7 @@ class PendingActionSummary(BaseModel):
                 "id": action.id,
                 "condition": f"{action.condition.field} {action.condition.operator.value} {action.condition.value}",
                 "market": action.action_params.market,
-                "created": action.created_at.isoformat()
+                "created": action.created_at.isoformat(),
             }
             
             if action.action_type == ActionType.STOP_LOSS:
@@ -184,5 +184,5 @@ class PendingActionSummary(BaseModel):
             stop_losses=stop_losses,
             take_profits=take_profits,
             limit_orders=limit_orders,
-            other_actions=others
+            other_actions=others,
         )

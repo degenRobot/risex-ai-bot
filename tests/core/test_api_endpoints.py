@@ -2,6 +2,7 @@
 """Test specific RISE API endpoints for automated trading."""
 
 import asyncio
+
 from app.services.rise_client import RiseClient
 
 
@@ -43,10 +44,10 @@ async def test_specific_apis():
                     trading_data = await client._request(
                         "GET", 
                         f"/v1/markets/{market_id}/trading-view-data",
-                        params={"resolution": "1D", "limit": 10}
+                        params={"resolution": "1D", "limit": 10},
                     )
                     
-                    print(f"   ✅ Trading data retrieved")
+                    print("   ✅ Trading data retrieved")
                     if "data" in trading_data:
                         data = trading_data["data"]
                         if isinstance(data, list) and len(data) > 0:
@@ -76,10 +77,10 @@ async def test_specific_apis():
                 trade_history = await client._request(
                     "GET",
                     "/v1/account/trade-history", 
-                    params={"account": dummy_account, "limit": 10}
+                    params={"account": dummy_account, "limit": 10},
                 )
                 
-                print(f"   ✅ Trade history endpoint responsive")
+                print("   ✅ Trade history endpoint responsive")
                 print(f"   📊 Response structure: {list(trade_history.keys())}")
                 
                 if "data" in trade_history:
@@ -89,7 +90,7 @@ async def test_specific_apis():
             except Exception as e:
                 error_msg = str(e).lower()
                 if "not found" in error_msg or "invalid" in error_msg:
-                    print(f"   ✅ Trade history endpoint working (account not found as expected)")
+                    print("   ✅ Trade history endpoint working (account not found as expected)")
                 else:
                     print(f"   ⚠️  Trade history error: {e}")
             print()
@@ -101,16 +102,16 @@ async def test_specific_apis():
                 balance_data = await client._request(
                     "GET",
                     "/v1/account/balance",
-                    params={"account": dummy_account}
+                    params={"account": dummy_account},
                 )
                 
-                print(f"   ✅ Balance endpoint responsive")
+                print("   ✅ Balance endpoint responsive")
                 print(f"   📊 Response structure: {list(balance_data.keys())}")
                 
             except Exception as e:
                 error_msg = str(e).lower()
                 if "not found" in error_msg or "invalid" in error_msg:
-                    print(f"   ✅ Balance endpoint working (account not found as expected)")
+                    print("   ✅ Balance endpoint working (account not found as expected)")
                 else:
                     print(f"   ⚠️  Balance error: {e}")
             print()
@@ -122,16 +123,16 @@ async def test_specific_apis():
                 positions_data = await client._request(
                     "GET",
                     "/v1/account/positions",
-                    params={"account": dummy_account}
+                    params={"account": dummy_account},
                 )
                 
-                print(f"   ✅ Positions endpoint responsive") 
+                print("   ✅ Positions endpoint responsive") 
                 print(f"   📊 Response structure: {list(positions_data.keys())}")
                 
             except Exception as e:
                 error_msg = str(e).lower()
                 if "not found" in error_msg or "invalid" in error_msg:
-                    print(f"   ✅ Positions endpoint working (account not found as expected)")
+                    print("   ✅ Positions endpoint working (account not found as expected)")
                 else:
                     print(f"   ⚠️  Positions error: {e}")
             print()
@@ -150,7 +151,7 @@ async def test_specific_apis():
             return {
                 "markets": markets,
                 "btc_market": btc_market,
-                "eth_market": eth_market
+                "eth_market": eth_market,
             }
             
         except Exception as e:

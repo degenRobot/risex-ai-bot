@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -23,9 +23,9 @@ class Persona(BaseModel):
     bio: str
     trading_style: TradingStyle
     risk_tolerance: float  # 0.0 to 1.0
-    favorite_assets: List[str]
-    personality_traits: List[str]
-    sample_posts: List[str]
+    favorite_assets: list[str]
+    personality_traits: list[str]
+    sample_posts: list[str]
     created_at: datetime = datetime.now()
 
 
@@ -123,7 +123,7 @@ class TradingDecisionLog(BaseModel):
     total_pnl: float
     
     # Recent social activity
-    recent_posts: List[str]
+    recent_posts: list[str]
     
     # AI Decision
     decision: TradeDecision
@@ -146,7 +146,7 @@ class TradingSession(BaseModel):
     account_id: str
     start_time: datetime
     end_time: Optional[datetime] = None
-    decisions: List[TradingDecisionLog] = []
+    decisions: list[TradingDecisionLog] = []
     session_pnl: float = 0.0
     total_trades: int = 0
     successful_trades: int = 0

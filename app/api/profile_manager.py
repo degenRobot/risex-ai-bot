@@ -1,19 +1,19 @@
 """Profile Manager API with authentication for creating new trading profiles."""
 
-from typing import Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends, Header
-from pydantic import BaseModel, Field, validator
-import secrets
+# from ..profiles.factory import ProfileFactory, ProfileCreationError  # Removed module
+import logging
 import uuid
 from datetime import datetime
-from eth_account import Account as EthAccount
+from typing import Any, Optional
 
-from ..services.storage import JSONStorage
-from ..services.rise_client import RiseClient
-from ..models import Account, Persona, TradingStyle, Trade
+from eth_account import Account as EthAccount
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel, Field, validator
+
 from ..config import settings
-from ..profiles.factory import ProfileFactory, ProfileCreationError
-import logging
+from ..models import Trade, TradingStyle
+from ..services.rise_client import RiseClient
+from ..services.storage import JSONStorage
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class CreateProfileResponse(BaseModel):
     profile_id: str
     address: str
     signer_address: str
-    persona: Dict
+    persona: dict
     initial_deposit: float
     message: str
 
@@ -54,7 +54,7 @@ class PersonaUpdate(BaseModel):
     favorite_assets: Optional[list[str]] = Field(None, max_items=10)
     personality_traits: Optional[list[str]] = Field(None, max_items=20)
     
-    @validator('favorite_assets')
+    @validator("favorite_assets")
     def validate_assets(cls, v):
         if v is not None:
             # Validate asset symbols
@@ -90,7 +90,7 @@ async def verify_api_key(x_api_key: str = Header(...)) -> str:
     if not APIKeyConfig.validate_key(x_api_key):
         raise HTTPException(
             status_code=401,
-            detail="Invalid API key"
+            detail="Invalid API key",
         )
     return x_api_key
 
@@ -98,7 +98,7 @@ async def verify_api_key(x_api_key: str = Header(...)) -> str:
 @router.post("/profiles", response_model=CreateProfileResponse)
 async def create_profile(
     request: CreateProfileRequest,
-    api_key: str = Depends(verify_api_key)
+    api_key: str = Depends(verify_api_key),
 ) -> CreateProfileResponse:
     """
     Create a new trading profile with automated setup.
@@ -114,19 +114,10 @@ async def create_profile(
     Requires API key authentication in X-API-Key header.
     """
     try:
-        # Use ProfileFactory for centralized creation logic
-        factory = ProfileFactory()
-        
-        profile_data = await factory.create_profile(
-            name=request.name,
-            handle=request.handle,
-            bio=request.bio,
-            trading_style=request.trading_style.value,
-            risk_tolerance=request.risk_tolerance,
-            personality_type=request.personality_type,
-            initial_deposit=request.initial_deposit,
-            favorite_assets=request.favorite_assets,
-            personality_traits=request.personality_traits
+        # ProfileFactory removed - would need reimplementation
+        raise HTTPException(
+            status_code=501, 
+            detail="Profile creation temporarily disabled during refactoring",
         )
         
         # Success message with equity info
@@ -142,28 +133,28 @@ async def create_profile(
             signer_address=profile_data["signer_address"],
             persona=profile_data["persona"],
             initial_deposit=request.initial_deposit,
-            message=message
+            message=message,
         )
         
-    except ProfileCreationError as e:
+    except ValueError as e:  # ProfileCreationError was removed
         # Profile creation specific error
         raise HTTPException(
             status_code=400,
-            detail=str(e)
+            detail=str(e),
         )
     except Exception as e:
         # Generic error
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to create profile: {str(e)}"
+            detail=f"Failed to create profile: {e!s}",
         )
 
 
 @router.get("/profiles/{profile_id}")
 async def get_admin_profile(
     profile_id: str,
-    api_key: str = Depends(verify_api_key)
-) -> Dict:
+    api_key: str = Depends(verify_api_key),
+) -> dict:
     """Get detailed profile information (admin view with sensitive data)."""
     account = storage.get_account(profile_id)
     if not account:
@@ -193,14 +184,14 @@ async def get_admin_profile(
         "current_equity": current_equity,
         "created_at": account.created_at.isoformat() if account.created_at else None,
         "registered_at": account.registered_at.isoformat() if account.registered_at else None,
-        "deposited_at": account.deposited_at.isoformat() if account.deposited_at else None
+        "deposited_at": account.deposited_at.isoformat() if account.deposited_at else None,
     }
 
 
 @router.get("/profiles")
 async def list_admin_profiles(
-    api_key: str = Depends(verify_api_key)
-) -> Dict:
+    api_key: str = Depends(verify_api_key),
+) -> dict:
     """List all profiles with full details (admin view)."""
     accounts = storage.list_accounts()
     
@@ -213,10 +204,10 @@ async def list_admin_profiles(
                 "signer_address": EthAccount.from_key(acc.signer_key).address,
                 "persona": acc.persona.model_dump() if acc.persona else None,
                 "is_active": acc.is_active,
-                "created_at": acc.created_at
+                "created_at": acc.created_at,
             }
             for acc in accounts
-        ]
+        ],
     }
 
 
@@ -224,8 +215,8 @@ async def list_admin_profiles(
 async def update_profile(
     profile_id: str,
     request: UpdateProfileRequest,
-    api_key: str = Depends(verify_api_key)
-) -> Dict:
+    api_key: str = Depends(verify_api_key),
+) -> dict:
     """
     Update an existing profile's editable attributes.
     
@@ -255,7 +246,7 @@ async def update_profile(
             else:
                 raise HTTPException(
                     status_code=400,
-                    detail="Cannot update persona - profile has no persona"
+                    detail="Cannot update persona - profile has no persona",
                 )
         
         # Update account fields
@@ -271,7 +262,7 @@ async def update_profile(
         
         # Publish update event
         from ..realtime.bus import BUS
-        from ..realtime.events import RealtimeEvent, EventType
+        from ..realtime.events import EventType, RealtimeEvent
         
         update_event = RealtimeEvent(
             type=EventType.PROFILE_UPDATED,
@@ -279,15 +270,15 @@ async def update_profile(
             payload={
                 "profile_id": profile_id,
                 "updated_fields": list(request.model_dump(exclude_unset=True).keys()),
-                "is_active": account.is_active
-            }
+                "is_active": account.is_active,
+            },
         )
         await BUS.publish(update_event)
         
         return {
             "message": f"Profile {profile_id} updated successfully",
             "profile_id": profile_id,
-            "updated_fields": list(request.model_dump(exclude_unset=True).keys())
+            "updated_fields": list(request.model_dump(exclude_unset=True).keys()),
         }
         
     except HTTPException:
@@ -295,15 +286,15 @@ async def update_profile(
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to update profile: {str(e)}"
+            detail=f"Failed to update profile: {e!s}",
         )
 
 
 @router.delete("/profiles/{profile_id}")
 async def delete_profile(
     profile_id: str,
-    api_key: str = Depends(verify_api_key)
-) -> Dict:
+    api_key: str = Depends(verify_api_key),
+) -> dict:
     """Delete a profile (deactivate it)."""
     account = storage.get_account(profile_id)
     if not account:
@@ -315,7 +306,7 @@ async def delete_profile(
     
     # Publish deactivation event
     from ..realtime.bus import BUS
-    from ..realtime.events import RealtimeEvent, EventType
+    from ..realtime.events import EventType, RealtimeEvent
     
     delete_event = RealtimeEvent(
         type=EventType.PROFILE_UPDATED,
@@ -323,8 +314,8 @@ async def delete_profile(
         payload={
             "profile_id": profile_id,
             "is_active": False,
-            "action": "deactivated"
-        }
+            "action": "deactivated",
+        },
     )
     await BUS.publish(delete_event)
     
@@ -345,7 +336,7 @@ class OrderRequest(BaseModel):
 
 class PositionsResponse(BaseModel):
     """Response with profile positions."""
-    positions: Dict[str, Any]
+    positions: dict[str, Any]
     total_value: float
     timestamp: str
 
@@ -354,8 +345,8 @@ class PositionsResponse(BaseModel):
 async def place_order(
     profile_id: str,
     order_request: OrderRequest,
-    api_key: str = Depends(verify_api_key)
-) -> Dict:
+    api_key: str = Depends(verify_api_key),
+) -> dict:
     """
     Place a market order for a specific profile.
     
@@ -391,7 +382,7 @@ async def place_order(
                 side=order_request.side,
                 size=order_request.size,
                 price=0,  # Market order
-                order_type="limit"  # Must use "limit" for market orders on RISE testnet
+                order_type="limit",  # Must use "limit" for market orders on RISE testnet
             )
             
             # Save trade record
@@ -405,7 +396,7 @@ async def place_order(
                 reasoning=order_request.reasoning,
                 timestamp=datetime.utcnow(),
                 status="executed",
-                order_id=order["orderId"]
+                order_id=order["orderId"],
             )
             storage.save_trade(trade)
             
@@ -415,20 +406,20 @@ async def place_order(
                 "market": order_request.market,
                 "side": order_request.side,
                 "size": order_request.size,
-                "message": f"Order placed successfully"
+                "message": "Order placed successfully",
             }
             
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to place order: {str(e)}"
+            detail=f"Failed to place order: {e!s}",
         )
 
 
 @router.get("/profiles/{profile_id}/positions", response_model=PositionsResponse)
 async def get_positions(
     profile_id: str,
-    api_key: str = Depends(verify_api_key)
+    api_key: str = Depends(verify_api_key),
 ) -> PositionsResponse:
     """
     Get current positions for a profile.
@@ -458,21 +449,21 @@ async def get_positions(
             return PositionsResponse(
                 positions=positions,
                 total_value=total_value,
-                timestamp=datetime.utcnow().isoformat()
+                timestamp=datetime.utcnow().isoformat(),
             )
             
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to get positions: {str(e)}"
+            detail=f"Failed to get positions: {e!s}",
         )
 
 
 @router.get("/profiles/{profile_id}/balance")
 async def get_balance(
     profile_id: str,
-    api_key: str = Depends(verify_api_key)
-) -> Dict:
+    api_key: str = Depends(verify_api_key),
+) -> dict:
     """
     Get USDC balance for a profile.
     
@@ -492,11 +483,11 @@ async def get_balance(
                 "address": account.address,
                 "balance": balance_info.get("marginSummary", {}).get("accountValue", 0),
                 "available": balance_info.get("marginSummary", {}).get("freeCollateral", 0),
-                "account_info": balance_info
+                "account_info": balance_info,
             }
             
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to get balance: {str(e)}"
+            detail=f"Failed to get balance: {e!s}",
         )

@@ -8,11 +8,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+
 from app.services.profile_chat import ProfileChatService
 from app.services.storage import JSONStorage
-from app.models import Account, Persona, TradingStyle
-from datetime import datetime
-import uuid
 
 
 async def test_profile_chat():
@@ -38,24 +36,24 @@ async def test_profile_chat():
     test_conversations = [
         {
             "message": "Hey! I just read that the Fed is going to cut rates next week. This is super bullish for Bitcoin!",
-            "expected_update": "market_outlook"
+            "expected_update": "market_outlook",
         },
         {
             "message": "I've been following this whale trader who's been accumulating BTC. Think we're about to see a massive pump to 100k!",
-            "expected_update": "market_outlook"
+            "expected_update": "market_outlook",
         },
         {
             "message": "You should be way more aggressive with your position sizing. Small positions won't make you rich!",
-            "expected_update": "trading_bias"
+            "expected_update": "trading_bias",
         },
         {
             "message": "What's your current position on BTC right now?",
-            "expected_update": None  # Just a question
+            "expected_update": None,  # Just a question
         },
         {
             "message": "The market is looking really weak. I'd be careful about any longs right now. Might want to close positions.",
-            "expected_update": "market_outlook"
-        }
+            "expected_update": "market_outlook",
+        },
     ]
     
     chat_history = ""
@@ -71,7 +69,7 @@ async def test_profile_chat():
                 account_id=account.id,
                 user_message=conversation["message"],
                 chat_history=chat_history,
-                user_session_id=session_id
+                user_session_id=session_id,
             )
             
             if "error" in result:
@@ -85,16 +83,16 @@ async def test_profile_chat():
             print(f"\n🤖 AI Response: {result['response']}")
             
             if result.get("profileUpdates"):
-                print(f"\n📝 Profile Updates:")
+                print("\n📝 Profile Updates:")
                 for update in result["profileUpdates"]:
                     print(f"   - {update}")
             else:
-                print(f"\n📝 No profile updates (this is fine for questions)")
+                print("\n📝 No profile updates (this is fine for questions)")
             
             # Show context
             if result.get("context"):
                 context = result["context"]
-                print(f"\n💰 Trading Context:")
+                print("\n💰 Trading Context:")
                 print(f"   - Current P&L: ${context.get('currentPnL', 0):.2f}")
                 print(f"   - Open Positions: {context.get('openPositions', 0)}")
             
@@ -112,7 +110,7 @@ async def test_profile_chat():
         print(f"Address: {summary['profile']['address']}")
         
         if summary.get("current_outlook"):
-            print(f"\n🔮 Recent Market Outlooks:")
+            print("\n🔮 Recent Market Outlooks:")
             for outlook in summary["current_outlook"][-3:]:  # Last 3
                 asset = outlook.get("asset", "Unknown")
                 view = outlook.get("outlook", "Unknown")
@@ -120,14 +118,14 @@ async def test_profile_chat():
                 print(f"   - {asset}: {view} ({reasoning})")
         
         if summary.get("trading_bias"):
-            print(f"\n⚖️  Recent Trading Bias Updates:")
+            print("\n⚖️  Recent Trading Bias Updates:")
             for bias in summary["trading_bias"][-2:]:  # Last 2
                 bias_text = bias.get("bias", "Unknown")
                 strategy = bias.get("strategy", "Unknown")
                 print(f"   - {bias_text} with {strategy}")
         
         if summary.get("personality_updates"):
-            print(f"\n🧠 Recent Personality Updates:")
+            print("\n🧠 Recent Personality Updates:")
             for trait in summary["personality_updates"][-3:]:  # Last 3
                 trait_text = trait.get("trait", "Unknown")
                 importance = trait.get("importance", "Medium")
@@ -164,7 +162,7 @@ GET /api/profiles/{account.id}/summary
 GET /api/profiles/{account.id}/context
 """)
     
-    print(f"\n🎉 Chat system test completed!")
+    print("\n🎉 Chat system test completed!")
     print(f"Session ID: {session_id}")
     print(f"Conversation length: {len(json.loads(chat_history) if chat_history else [])}")
 

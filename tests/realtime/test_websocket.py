@@ -1,20 +1,15 @@
 """Tests for WebSocket endpoint."""
 
 import asyncio
-import json
-import pytest
 from uuid import uuid4
 
+import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from fastapi import FastAPI, WebSocket
 
-from app.realtime.ws import router, connection_manager
 from app.realtime.bus import BUS
-from app.realtime.events import (
-    create_market_update,
-    create_chat_message,
-    EventType
-)
+from app.realtime.events import EventType, create_chat_message, create_market_update
+from app.realtime.ws import connection_manager, router
 
 
 @pytest.fixture
@@ -59,7 +54,7 @@ def test_websocket_message_deduplication(test_client):
     user_id = "test-user-123"
     
     with test_client.websocket_connect(
-        f"/ws?profile_id={profile_id}&user_id={user_id}"
+        f"/ws?profile_id={profile_id}&user_id={user_id}",
     ) as websocket:
         # Skip connection message
         websocket.receive_json()
@@ -68,7 +63,7 @@ def test_websocket_message_deduplication(test_client):
         websocket.send_json({
             "type": "chat.message",
             "content": "Hello from test",
-            "profile_id": profile_id
+            "profile_id": profile_id,
         })
         
         # Should get confirmation
@@ -86,7 +81,6 @@ def test_websocket_message_deduplication(test_client):
 async def test_websocket_event_streaming():
     """Test receiving streamed events."""
     # This test needs to run in async context
-    from starlette.testclient import WebSocketTestSession
     
     profile_id = "stream-test"
     
@@ -112,7 +106,7 @@ async def test_websocket_event_streaming():
                 sender_id="other-user",
                 message_id=str(uuid4()),
                 content="Test message",
-                role="user"
+                role="user",
             ))
         
         # Run publisher in background
@@ -151,7 +145,7 @@ def test_websocket_dynamic_subscription(test_client):
         profile_id = "dynamic-profile"
         websocket.send_json({
             "type": "subscribe",
-            "profile_id": profile_id
+            "profile_id": profile_id,
         })
         
         # Should get confirmation
@@ -162,7 +156,7 @@ def test_websocket_dynamic_subscription(test_client):
         # Unsubscribe
         websocket.send_json({
             "type": "unsubscribe", 
-            "profile_id": profile_id
+            "profile_id": profile_id,
         })
         
         # Should get confirmation

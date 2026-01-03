@@ -2,7 +2,6 @@
 
 import random
 from datetime import datetime, timedelta
-from typing import Dict, List
 
 from ..models import TradingStyle
 
@@ -16,8 +15,8 @@ class MockTradingProfile:
         name: str,
         bio: str,
         trading_style: TradingStyle,
-        favorite_assets: List[str],
-        personality_traits: List[str]
+        favorite_assets: list[str],
+        personality_traits: list[str],
     ):
         self.handle = handle
         self.name = name
@@ -25,15 +24,15 @@ class MockTradingProfile:
         self.trading_style = trading_style
         self.favorite_assets = favorite_assets
         self.personality_traits = personality_traits
-        self.tweet_history: List[Dict] = []
+        self.tweet_history: list[dict] = []
     
-    def generate_tweet_based_on_market(self, market_data: Dict) -> str:
+    def generate_tweet_based_on_market(self, market_data: dict) -> str:
         """Generate a tweet based on current market conditions and personality."""
         
-        btc_change = market_data.get('btc_change', 0)
-        eth_change = market_data.get('eth_change', 0)
-        btc_price = market_data.get('btc_price', 95000)
-        eth_price = market_data.get('eth_price', 3500)
+        btc_change = market_data.get("btc_change", 0)
+        eth_change = market_data.get("eth_change", 0)
+        btc_price = market_data.get("btc_price", 95000)
+        eth_price = market_data.get("eth_price", 3500)
         
         # Tweet templates based on trading style and market conditions
         tweets = self._get_tweet_templates(btc_change, eth_change, btc_price, eth_price)
@@ -43,19 +42,19 @@ class MockTradingProfile:
         
         # Store tweet with timestamp
         self.tweet_history.append({
-            'text': tweet,
-            'timestamp': datetime.now(),
-            'market_context': {
-                'btc_change': btc_change,
-                'eth_change': eth_change,
-                'btc_price': btc_price,
-                'eth_price': eth_price
-            }
+            "text": tweet,
+            "timestamp": datetime.now(),
+            "market_context": {
+                "btc_change": btc_change,
+                "eth_change": eth_change,
+                "btc_price": btc_price,
+                "eth_price": eth_price,
+            },
         })
         
         return tweet
     
-    def _get_tweet_templates(self, btc_change: float, eth_change: float, btc_price: float, eth_price: float) -> List[str]:
+    def _get_tweet_templates(self, btc_change: float, eth_change: float, btc_price: float, eth_price: float) -> list[str]:
         """Get appropriate tweet templates based on trading style and market."""
         
         # Determine market sentiment
@@ -176,15 +175,15 @@ class MockTradingProfile:
             ])
         
         return templates if templates else [
-            "Markets are wild today! What a time to be in crypto! 🎢"
+            "Markets are wild today! What a time to be in crypto! 🎢",
         ]
     
-    def get_recent_tweets(self, days: int = 7) -> List[str]:
+    def get_recent_tweets(self, days: int = 7) -> list[str]:
         """Get recent tweets from the last N days."""
         cutoff_date = datetime.now() - timedelta(days=days)
         recent_tweets = [
-            tweet['text'] for tweet in self.tweet_history 
-            if tweet['timestamp'] > cutoff_date
+            tweet["text"] for tweet in self.tweet_history 
+            if tweet["timestamp"] > cutoff_date
         ]
         return recent_tweets[-20:]  # Return max 20 recent tweets
 
@@ -195,7 +194,7 @@ class MockSocialClient:
     def __init__(self):
         self.profiles = self._create_mock_profiles()
     
-    def _create_mock_profiles(self) -> Dict[str, MockTradingProfile]:
+    def _create_mock_profiles(self) -> dict[str, MockTradingProfile]:
         """Create a set of predefined mock trading profiles."""
         
         profiles = {}
@@ -207,7 +206,7 @@ class MockSocialClient:
             bio="Day trader | High risk high reward | YOLO mentality | Not financial advice 🚀",
             trading_style=TradingStyle.AGGRESSIVE,
             favorite_assets=["BTC", "ETH"],
-            personality_traits=["risk-taker", "optimistic", "impatient", "high-energy"]
+            personality_traits=["risk-taker", "optimistic", "impatient", "high-energy"],
         )
         
         # Conservative long-term investor
@@ -217,7 +216,7 @@ class MockSocialClient:
             bio="Bitcoin maximalist | DCA strategy | 10 year time horizon | Stack sats 💎🙌",
             trading_style=TradingStyle.CONSERVATIVE,
             favorite_assets=["BTC"],
-            personality_traits=["patient", "disciplined", "long-term-focused", "risk-aware"]
+            personality_traits=["patient", "disciplined", "long-term-focused", "risk-aware"],
         )
         
         # Momentum trader
@@ -227,7 +226,7 @@ class MockSocialClient:
             bio="Technical analyst | Trend following | Chart patterns | Momentum is king 📈",
             trading_style=TradingStyle.MOMENTUM,
             favorite_assets=["BTC", "ETH"],
-            personality_traits=["analytical", "disciplined", "trend-following", "patient"]
+            personality_traits=["analytical", "disciplined", "trend-following", "patient"],
         )
         
         # Contrarian trader
@@ -237,7 +236,7 @@ class MockSocialClient:
             bio="Contrarian investor | Buy fear, sell greed | Value hunting | Independent thinking 🎯",
             trading_style=TradingStyle.CONTRARIAN,
             favorite_assets=["BTC", "ETH"],
-            personality_traits=["independent", "skeptical", "value-focused", "patient"]
+            personality_traits=["independent", "skeptical", "value-focused", "patient"],
         )
         
         # YOLO degen
@@ -247,7 +246,7 @@ class MockSocialClient:
             bio="100x or bust | Leverage everything | Moon mission commander | DYOR = Don't Yield On Risk 🎰",
             trading_style=TradingStyle.DEGEN,
             favorite_assets=["BTC", "ETH"],
-            personality_traits=["reckless", "optimistic", "high-risk", "meme-focused"]
+            personality_traits=["reckless", "optimistic", "high-risk", "meme-focused"],
         )
         
         return profiles
@@ -256,11 +255,11 @@ class MockSocialClient:
         """Get a profile by handle."""
         return self.profiles.get(handle)
     
-    def list_profiles(self) -> List[str]:
+    def list_profiles(self) -> list[str]:
         """List available profile handles."""
         return list(self.profiles.keys())
     
-    def simulate_daily_activity(self, market_data: Dict) -> Dict[str, List[str]]:
+    def simulate_daily_activity(self, market_data: dict) -> dict[str, list[str]]:
         """Simulate daily social media activity for all profiles."""
         
         daily_tweets = {}
@@ -278,7 +277,7 @@ class MockSocialClient:
         
         return daily_tweets
     
-    async def get_user_profile(self, handle: str) -> Dict:
+    async def get_user_profile(self, handle: str) -> dict:
         """Simulate fetching a user profile (async to match real API)."""
         profile = self.get_profile(handle)
         if not profile:
@@ -288,10 +287,10 @@ class MockSocialClient:
             "handle": profile.handle,
             "name": profile.name,
             "bio": profile.bio,
-            "tweet_texts": profile.get_recent_tweets(days=7)
+            "tweet_texts": profile.get_recent_tweets(days=7),
         }
     
-    async def get_user_tweets(self, handle: str, count: int = 20) -> List[Dict]:
+    async def get_user_tweets(self, handle: str, count: int = 20) -> list[dict]:
         """Simulate fetching recent tweets (async to match real API)."""
         profile = self.get_profile(handle)
         if not profile:
@@ -304,7 +303,7 @@ class MockSocialClient:
                 "text": tweet["text"],
                 "created_at": tweet["timestamp"].isoformat(),
                 "likes": random.randint(0, 100),
-                "retweets": random.randint(0, 20)
+                "retweets": random.randint(0, 20),
             }
             for tweet in recent_tweets
         ]
