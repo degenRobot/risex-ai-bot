@@ -358,24 +358,24 @@ You: [Respond in character] + [Call update_market_outlook tool]"""
             "open_positions": 0,
             "available_balance": 0,
             "positions": [],
-            "recent_trades": []
+            "recent_trades": [],
+            "orders": [],
+            "orders_count": 0
         }
         
-        try:
-            # Get account balance
-            async with self.rise_client as client:
-                account_data = await client.get_account(account.address)
-                if account_data:
-                    context["available_balance"] = float(account_data.get("balance", 0))
-                    
-                # Get positions from RISE API
-                positions = await client.get_all_positions(account.address)
-                if positions:
-                    context["positions"] = positions
-                    context["open_positions"] = len(positions)
-                    
-        except Exception:
-            pass  # Use defaults if API fails
+        # Get stored account data which includes positions from equity monitor
+        accounts = self.storage.get_all_accounts()
+        stored_account = accounts.get(account.id, {})
+        
+        # Use positions from stored data (fetched by equity monitor)
+        if "positions" in stored_account:
+            context["positions"] = stored_account["positions"]
+            context["open_positions"] = len(stored_account["positions"])
+        
+        # Use orders from stored data (fetched by equity monitor)
+        if "orders" in stored_account:
+            context["orders"] = stored_account["orders"]
+            context["orders_count"] = len(stored_account["orders"])
         
         # Get recent trades from storage
         context["recent_trades"] = self.storage.get_recent_trades(account.id, limit=5)
@@ -383,11 +383,13 @@ You: [Respond in character] + [Call update_market_outlook tool]"""
         # Add equity information from monitor
         equity_monitor = get_equity_monitor()
         
-        # First try to fetch fresh equity and margin together
+        # First try to fetch fresh equity, margin, and positions together
         try:
-            equity_data = await equity_monitor.fetch_equity_and_margin(account.address)
+            equity_data = await equity_monitor.fetch_equity_margin_and_positions(account.address)
             current_equity = equity_data.get("equity")
             free_margin = equity_data.get("free_margin")
+            positions = equity_data.get("positions", [])
+            orders = equity_data.get("orders", [])
             
             if current_equity is not None:
                 context["current_equity"] = current_equity
@@ -400,6 +402,16 @@ You: [Respond in character] + [Call update_market_outlook tool]"""
                 
                 # Use free margin as available balance
                 context["available_balance"] = free_margin or 0
+                
+                # Update positions from fresh fetch
+                if positions is not None:
+                    context["positions"] = positions
+                    context["open_positions"] = len(positions)
+                
+                # Update orders from fresh fetch
+                if orders is not None:
+                    context["orders"] = orders
+                    context["orders_count"] = len(orders)
                 
                 # Calculate max position sizes for display
                 if free_margin and free_margin > 0:
@@ -426,6 +438,16 @@ You: [Respond in character] + [Call update_market_outlook tool]"""
                 
                 # Use free margin as available balance
                 context["available_balance"] = cached_data.get("free_margin", 0)
+                
+                # Use cached positions if available
+                if "positions" in cached_data:
+                    context["positions"] = cached_data["positions"]
+                    context["open_positions"] = len(cached_data["positions"])
+                
+                # Use cached orders if available
+                if "orders" in cached_data:
+                    context["orders"] = cached_data["orders"]
+                    context["orders_count"] = len(cached_data["orders"])
         
         # Get equity change information
         if hasattr(account, 'equity_change_1h') and account.equity_change_1h is not None:

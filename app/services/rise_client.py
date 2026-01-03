@@ -188,7 +188,19 @@ class RiseClient:
             "GET", "/v1/positions",
             params={"account": account}
         )
-        return response.get("positions", [])
+        # RISE API returns nested structure: {"data": {"positions": [...]}}
+        data = response.get("data", {})
+        return data.get("positions", [])
+    
+    async def get_orders(self, account: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get orders history for account."""
+        response = await self._request(
+            "GET", "/v1/orders",
+            params={"account": account, "page_size": limit}
+        )
+        # RISE API returns nested structure: {"data": {"orders": [...]}}
+        data = response.get("data", {})
+        return data.get("orders", [])
     
     async def get_balance(self, account: str) -> Dict[str, Any]:
         """Get account balance."""

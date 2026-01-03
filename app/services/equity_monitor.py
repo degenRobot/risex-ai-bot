@@ -10,6 +10,7 @@ from web3.exceptions import ContractLogicError
 
 from ..config import settings
 from .storage import JSONStorage
+from .rise_client import RiseClient
 
 # Contract configuration
 PERPS_MANAGER_ADDRESS = "0x68cAcD54a8c93A3186BF50bE6b78B761F728E1b4"
@@ -158,6 +159,73 @@ class EquityMonitor:
             self.logger.error(f"Failed to fetch equity/margin for {address}: {e}")
             return {"equity": None, "free_margin": None}
     
+    async def fetch_equity_margin_and_positions(self, address: str) -> Dict:
+        """Fetch equity, free margin, positions, and orders for a single account."""
+        try:
+            # Ensure address has correct checksum
+            address = self.w3.to_checksum_address(address)
+            
+            # Initialize RISE client if needed
+            if not hasattr(self, 'rise_client'):
+                self.rise_client = RiseClient()
+            
+            # Fetch all values concurrently
+            equity_task = self.perps_manager.functions.getAccountEquity(address).call()
+            free_margin_task = self.perps_manager.functions.getFreeCrossMarginBalance(address).call()
+            positions_task = self.rise_client.get_all_positions(address)
+            orders_task = self.rise_client.get_orders(address, limit=50)  # Get recent 50 orders
+            
+            equity_raw, free_margin_raw, positions, orders = await asyncio.gather(
+                equity_task, 
+                free_margin_task,
+                positions_task,
+                orders_task,
+                return_exceptions=True
+            )
+            
+            # Handle potential errors
+            if isinstance(positions, Exception):
+                self.logger.warning(f"Failed to fetch positions for {address}: {positions}")
+                positions = []
+            
+            if isinstance(orders, Exception):
+                self.logger.warning(f"Failed to fetch orders for {address}: {orders}")
+                orders = []
+            
+            # Convert from 18 decimals to USDC
+            equity_usdc = float(equity_raw) / 10**18
+            free_margin_usdc = float(free_margin_raw) / 10**18
+            
+            # Get current block
+            block = await self.w3.eth.get_block("latest")
+            
+            # Update cache with all values
+            self.cache[address] = {
+                "equity": equity_usdc,
+                "free_margin": free_margin_usdc,
+                "margin_used": equity_usdc - free_margin_usdc,
+                "positions": positions,
+                "orders": orders,
+                "timestamp": datetime.utcnow(),
+                "block_number": block["number"],
+                "raw_equity": str(equity_raw),
+                "raw_free_margin": str(free_margin_raw)
+            }
+            
+            return {
+                "equity": equity_usdc,
+                "free_margin": free_margin_usdc,
+                "positions": positions,
+                "orders": orders
+            }
+            
+        except ContractLogicError as e:
+            self.logger.warning(f"Contract error for {address}: {e}")
+            return {"equity": None, "free_margin": None, "positions": [], "orders": []}
+        except Exception as e:
+            self.logger.error(f"Failed to fetch equity/margin/positions/orders for {address}: {e}")
+            return {"equity": None, "free_margin": None, "positions": [], "orders": []}
+    
     async def fetch_equity_batch(self, addresses: List[str]) -> Dict[str, Optional[float]]:
         """Batch fetch equity for multiple accounts."""
         results = {}
@@ -227,22 +295,26 @@ class EquityMonitor:
         return changes
     
     async def update_account_equity(self, account_id: str, address: str) -> bool:
-        """Update equity for a single account."""
-        # Fetch both equity and free margin together
-        data = await self.fetch_equity_and_margin(address)
+        """Update equity, margin, positions, and orders for a single account."""
+        # Fetch all data together
+        data = await self.fetch_equity_margin_and_positions(address)
         
         equity = data.get("equity")
         free_margin = data.get("free_margin")
+        positions = data.get("positions", [])
+        orders = data.get("orders", [])
         
         if equity is None:
             return False
         
-        # Save snapshot with both values
+        # Save snapshot with all values
         snapshot = {
             "timestamp": datetime.utcnow().isoformat(),
             "equity": equity,
             "free_margin": free_margin,
             "margin_used": equity - free_margin if free_margin else None,
+            "positions_count": len(positions),
+            "orders_count": len(orders),
             "block_number": self.cache[address].get("block_number")
         }
         
@@ -251,7 +323,7 @@ class EquityMonitor:
         # Calculate changes
         changes = self.calculate_equity_changes(account_id, equity)
         
-        # Update account with latest equity data
+        # Update account with latest data
         accounts = self.storage.get_all_accounts()
         account_data = accounts.get(account_id)
         
@@ -259,6 +331,10 @@ class EquityMonitor:
             account_data["latest_equity"] = equity
             account_data["free_margin"] = free_margin
             account_data["margin_used"] = equity - free_margin if free_margin else 0
+            account_data["positions"] = positions
+            account_data["positions_count"] = len(positions)
+            account_data["orders"] = orders
+            account_data["orders_count"] = len(orders)
             account_data["equity_updated_at"] = datetime.utcnow().isoformat()
             account_data["equity_change_1h"] = changes.get("change_1h")
             account_data["equity_change_24h"] = changes.get("change_24h")
@@ -269,8 +345,9 @@ class EquityMonitor:
             change_24h = changes.get('change_24h')
             
             self.logger.info(
-                f"Updated equity for {account_data.get('handle', account_id)}: "
+                f"Updated {account_data.get('handle', account_id)}: "
                 f"${equity:,.2f} (Free: ${free_margin:,.2f}) "
+                f"Positions: {len(positions)} Orders: {len(orders)} "
                 f"(1h: {f'{change_1h:+.1f}%' if change_1h is not None else 'N/A'}, "
                 f"24h: {f'{change_24h:+.1f}%' if change_24h is not None else 'N/A'})"
             )
@@ -388,7 +465,15 @@ class EquityMonitor:
                 (d["timestamp"] for d in self.cache.values()),
                 default=None
             ),
-            "consecutive_failures": self.consecutive_failures
+            "consecutive_failures": self.consecutive_failures,
+            "total_positions": sum(
+                len(data.get("positions", []))
+                for data in self.cache.values()
+            ),
+            "total_orders": sum(
+                len(data.get("orders", []))
+                for data in self.cache.values()
+            )
         }
 
 
