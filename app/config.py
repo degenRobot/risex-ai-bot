@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     trade_interval_seconds: int = 300  # 5 minutes
     max_position_usd: float = 100.0
     
+    # Admin API
+    admin_api_key: str = ""  # Set via ADMIN_API_KEY environment variable
+    
     # Environment
     environment: str = "testnet"
     debug: bool = False

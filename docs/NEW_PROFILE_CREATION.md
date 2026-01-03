@@ -6,6 +6,182 @@ Creating a new AI trading profile involves generating cryptographic keys, regist
 
 ## Complete Flow
 
+### 0. Personality Extraction (Optional)
+
+For creating profiles based on real X/Twitter personalities, use our enhanced Grok prompt to extract detailed persona information:
+
+#### Using Grok for Persona Extraction
+
+1. **Copy the Enhanced Prompt**: Use this comprehensive Grok prompt below
+
+**Enhanced Grok Prompt for X Profile Extraction:**
+
+```
+You are extracting a detailed trading persona from a public X profile to create an engaging AI trading personality. 
+
+IMPORTANT: Be extremely thorough and verbose in your analysis. Spend significant time analyzing tweets, replies, quote tweets, and interactions to capture the full personality. The goal is to create a unique, fun AI trader that people will enjoy following and chatting with.
+
+Target profile: {HANDLE_OR_URL}
+
+Please analyze:
+1. Last 20-50 tweets and interactions
+2. Bio, pinned posts, and linked content  
+3. Reply patterns and engagement style
+4. Recurring themes, interests, and obsessions
+5. Trading mindset and market commentary
+6. Personality quirks and unique speech patterns
+
+Produce detailed JSON, matching this enhanced schema:
+
+{
+  "profile_handle": "{HANDLE_OR_URL}",
+  "display_name": "",
+  "bio_summary": "comprehensive summary of their public persona",
+  
+  "personality_deep_dive": {
+    "core_traits": ["5-7 defining personality characteristics"],
+    "quirks_and_habits": ["unique behaviors, catchphrases, running jokes"],
+    "emotional_triggers": ["what gets them excited, angry, or passionate"],
+    "humor_style": "sarcastic / memey / dad jokes / dry wit / absurdist / none",
+    "energy_level": "high / manic / chill / varies / analytical",
+    "social_dynamics": "how they interact - confrontational / supportive / educational / trolly"
+  },
+  
+  "voice_and_communication": {
+    "tone": "e.g., snarky, formal, hype, academic, unhinged, wise",
+    "pacing": "rapid-fire / measured / varies by topic / verbose / concise", 
+    "vocabulary_level": "street / technical / academic / mixed",
+    "signature_phrases": ["exact phrases they use repeatedly - be specific"],
+    "emoji_usage": "heavy / selective / none / specific favorites",
+    "punctuation_style": "proper / casual / excessive / ellipses / caps",
+    "meme_fluency": "normie / degen / terminally online / boomer / none",
+    "first_person_samples": [
+      "quote about bull markets in their exact style",
+      "quote about bear markets in their exact style", 
+      "quote reacting to big crypto news in their exact style"
+    ]
+  },
+  
+  "trading_philosophy": {
+    "core_beliefs": ["fundamental beliefs about markets and trading"],
+    "strategy_preference": "detailed description of their approach",
+    "risk_tolerance": 0.0-1.0,
+    "time_horizon": "scalps / intraday / swing / long-term / varies",
+    "position_sizing_attitude": "aggressive / conservative / calculated / yolo",
+    "asset_focus": ["BTC", "ETH", "alts", "memes", "perps", "options", "stocks", "bonds"],
+    "market_bias": "perma-bull / perma-bear / adaptive / contrarian / momentum",
+    "decision_triggers": ["TA", "fundamentals", "sentiment", "news", "on-chain", "vibes"],
+    "loss_handling": "how they deal with losing trades - emotionally and practically",
+    "win_celebration": "how they react to successful trades",
+    "favorite_setups": ["specific trading patterns or scenarios they love"]
+  },
+  
+  "interests_and_obsessions": {
+    "crypto_focus": ["specific coins, protocols, or sectors they talk about most"],
+    "non_crypto_interests": ["hobbies, sports, culture, tech topics they engage with"],
+    "recurring_narratives": ["stories or themes they constantly reference"],
+    "pet_peeves": ["things that consistently annoy them"],
+    "influences": ["people they quote, retweet, or reference frequently"],
+    "communities": ["groups, servers, or spaces they're active in"]
+  },
+  
+  "content_patterns": {
+    "posting_frequency": "multiple daily / daily / weekly / sporadic",
+    "peak_activity_times": "when they're most active",
+    "content_mix": "% original thoughts / % retweets / % replies / % shitposts",
+    "thread_tendency": "writes long threads / short takes / varies",
+    "engagement_style": "responds to everyone / selective / ignores most",
+    "controversy_level": "avoids drama / occasional hot takes / constant chaos"
+  },
+  
+  "market_commentary_style": {
+    "chart_analysis": "heavy TA user / basic levels / fundamentals only / ignores charts",
+    "news_reaction": "immediate hot takes / thoughtful analysis / waits for confirmation",
+    "prediction_style": "specific price targets / vague directional / timeline focused",
+    "accountability": "admits mistakes / doubles down / deletes bad takes",
+    "educational_value": "teaches others / keeps insights private / learning publicly"
+  },
+  
+  "social_proof_and_credibility": {
+    "follower_engagement": "high interaction / lurker audience / bot followers",
+    "respected_voices": "who treats them as credible / who they respect",
+    "track_record_claims": "verifiable wins they reference / unverifiable boasts",
+    "transparency_level": "shares everything / selective disclosure / very private"
+  },
+  
+  "ai_personality_recommendations": {
+    "most_entertaining_aspects": ["what makes them fun to follow"],
+    "chat_conversation_hooks": ["topics that would get them excited to discuss"],
+    "trading_decision_triggers": ["market conditions that would activate their strategy"],
+    "personality_conflicts": ["types of users or ideas they'd clash with"],
+    "unique_value_proposition": "what makes this persona different from generic trading bots"
+  },
+  
+  "profile_archetype": "creative label capturing their essence (e.g., 'Degen Prophet', 'Chart Wizard', 'Macro Doomer')",
+  "entertainment_factor": 0.0-1.0,
+  "educational_value": 0.0-1.0, 
+  "authenticity_score": 0.0-1.0,
+  "overall_confidence": 0.0-1.0,
+  
+  "implementation_notes": [
+    "specific suggestions for making this persona engaging in our AI trading bot",
+    "potential chat scenarios that would showcase their personality", 
+    "trading behaviors that would feel authentic to their style",
+    "content they'd create that users would want to see"
+  ]
+}
+
+CRITICAL INSTRUCTIONS:
+- Be extremely detailed and specific - extract exact phrases and language patterns
+- Focus on what makes them unique and entertaining, not generic trader traits  
+- Capture their authentic voice through direct quotes and specific examples
+- Consider how this personality would be fun to interact with via chat
+- Think about what trading decisions would feel authentic to their character
+- If profile is sparse, lower confidence scores but still provide creative analysis
+- Aim for personalities that are memorable, distinct, and engaging
+
+Remember: The goal is creating an AI trader people will enjoy following and chatting with!
+```
+
+2. **Target Selection**: Choose an interesting X profile with:
+   - Active trading commentary
+   - Distinctive personality/voice
+   - Engaging content style  
+   - Clear trading philosophy
+
+3. **Run Analysis**: Replace `{HANDLE_OR_URL}` in the prompt above with your target profile and paste into Grok
+   ```
+   Target profile: @ExampleTrader
+   ```
+
+4. **Extract Key Data**: Focus on these elements for AI personality:
+   - **Voice patterns**: Exact phrases, tone, communication style
+   - **Trading philosophy**: Risk tolerance, strategy, market bias
+   - **Personality traits**: Quirks, humor style, emotional triggers
+   - **Content themes**: Favorite topics, recurring narratives
+   - **Social dynamics**: How they interact with others
+
+5. **Map to Our System**: Convert Grok output to our personality structure:
+   ```python
+   # Example mapping from Grok analysis
+   personality_type = "cynical"  # Based on social dynamics
+   risk_tolerance = 0.7         # From trading philosophy  
+   trading_style = "aggressive" # From strategy preference
+   speech_style = "ct"          # From voice analysis
+   personality_traits = [       # From personality deep dive
+       "snarky", "contrarian", "analytical"
+   ]
+   ```
+
+6. **Create Unique Profile**: Use extracted data in profile creation below
+
+**Benefits of Grok Extraction**:
+- ✅ Authentic personality based on real behavior
+- ✅ Distinctive voice that stands out  
+- ✅ Engaging chat interactions
+- ✅ Realistic trading decisions
+- ✅ Fun personalities users want to follow
+
 ### 1. Key Generation
 ```python
 from web3 import Web3
@@ -102,6 +278,8 @@ account_info = await rise_client.get_account(main_address)
 
 ### 5. Profile Creation
 
+#### Option A: Manual Creation (Advanced)
+
 ```python
 from app.models import Account, Persona
 from app.trader_profiles import create_trader_profile
@@ -136,6 +314,97 @@ account = Account(
 # Save to storage
 storage.save_account(account)
 ```
+
+#### Option B: Admin API (Recommended)
+
+Use the automated profile creation endpoint that handles everything:
+
+**API Endpoint**: `POST /api/admin/profiles`  
+**Authentication**: Requires `X-API-Key` header with `ADMIN_API_KEY`
+
+```bash
+curl -X POST "https://risex-trading-bot.fly.dev/api/admin/profiles" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Crypto Sage",
+    "handle": "crypto_sage_42",
+    "bio": "Wise trader who speaks in ancient market wisdom",
+    "trading_style": "conservative",
+    "risk_tolerance": 0.4,
+    "personality_type": "cynical",
+    "initial_deposit": 150.0,
+    "favorite_assets": ["BTC", "ETH", "SOL"],
+    "personality_traits": ["wise", "patient", "philosophical"]
+  }'
+```
+
+**Response:**
+```json
+{
+  "profile_id": "f1a96dac-89fd-4eeb-9dc6-5612085425d0",
+  "address": "0xdE3244FCBf035A374c556d3E1c1774ebA74436fD", 
+  "signer_address": "0x6A37D8A9213489a273bf037C20090d7804388FD8",
+  "persona": {...},
+  "initial_deposit": 150.0,
+  "message": "Profile created and funded with 150.0 USDC"
+}
+```
+
+**Trading Styles**: `aggressive`, `conservative`, `contrarian`, `momentum`, `degen`  
+**Personality Types**: `cynical`, `leftCurve`, `midwit`
+
+#### Option C: Grok-Enhanced Profile Creation
+
+Combine Grok persona extraction with API creation:
+
+1. **Extract with Grok**: Use enhanced prompt to analyze target X profile
+2. **Map Grok Output**: Convert analysis to API parameters:
+
+```python
+# Example: Converting Grok analysis to API request
+grok_analysis = {
+    "profile_archetype": "Chart Wizard", 
+    "trading_philosophy": {
+        "risk_tolerance": 0.8,
+        "strategy_preference": "technical analysis with momentum plays",
+        "market_bias": "adaptive"
+    },
+    "voice_and_communication": {
+        "tone": "snarky",
+        "signature_phrases": ["gm chart addicts", "cope harder", "this is gentlemen"],
+        "meme_fluency": "terminally online"
+    }
+}
+
+# Map to API request
+api_request = {
+    "name": grok_analysis["profile_archetype"],
+    "handle": "chart_wizard_2024",
+    "bio": f"Snarky TA expert who {grok_analysis['trading_philosophy']['strategy_preference']}",
+    "trading_style": "aggressive",  # Based on risk_tolerance > 0.7
+    "risk_tolerance": grok_analysis["trading_philosophy"]["risk_tolerance"],
+    "personality_type": "cynical",  # Based on snarky tone
+    "personality_traits": ["snarky", "analytical", "memey"],
+    "initial_deposit": 200.0
+}
+```
+
+3. **Create Enhanced Persona**: The profile will have authentic personality based on real behavior
+
+**Benefits of Grok-Enhanced Creation**:
+- 🎯 Realistic trading psychology
+- 💬 Authentic chat responses  
+- 🎭 Unique personality that stands out
+- 📊 Trading decisions that match character
+- 🔥 Higher user engagement
+
+This endpoint automatically:
+- ✅ Generates secure key pairs
+- ✅ Registers signer on RISE
+- ✅ Deposits initial USDC  
+- ✅ Creates persona and account
+- ✅ Activates for trading
 
 ### 6. Enable Services
 
@@ -203,8 +472,11 @@ For new profiles, verify:
 - [ ] ✅ **Funds Deposited**: Transaction hash received  
 - [ ] ✅ **Equity Visible**: On-chain balance shows deposit amount
 - [ ] ✅ **Profile Saved**: Account exists in `data/accounts.json`
-- [ ] ✅ **Chat Works**: AI responds with context
+- [ ] ✅ **Chat Works**: AI responds with context and positions data
 - [ ] ✅ **Trading Active**: Profile participates in trading cycles
+- [ ] ✅ **Positions Tracked**: Real-time position data from RISE API
+- [ ] ✅ **Orders History**: Historical order execution data
+- [ ] ✅ **API Access**: Profile accessible via API endpoints
 
 ## API References
 
@@ -216,6 +488,34 @@ For new profiles, verify:
 
 - **Models**: `app/models.py` - Account, Persona definitions
 - **Profiles**: `app/trader_profiles.py` - Base personalities  
-- **Client**: `app/services/rise_client.py` - API interactions
+- **Client**: `app/services/rise_client.py` - API interactions with RISE
+- **Profile Manager**: `app/api/profile_manager.py` - Admin API for profile creation
 - **Storage**: `data/accounts.json` - Profile persistence
-- **Tests**: `scripts/test_fresh_account_flow.py` - End-to-end testing
+- **Enhanced Grok Prompt**: Included in this document for X profile extraction
+- **API Documentation**: `API.md` - Complete API reference
+
+### Testing Scripts
+
+- **Position/Orders**: `scripts/test_positions_orders.py` - Verify data fetching
+- **Full Trading Flow**: `tests/trading/test_full_trading_flow.py` - Complete trading test
+- **API Testing**: `tests/api/test_profile_creation.py` - Profile creation via API
+- **Fresh Account**: `scripts/test_fresh_account_flow.py` - End-to-end account setup
+
+### Useful Commands
+
+```bash
+# Test profile creation via API
+poetry run python tests/api/test_profile_creation.py
+
+# Test position and order data fetching  
+poetry run python scripts/test_positions_orders.py
+
+# Create profile using admin API
+curl -X POST "https://risex-trading-bot.fly.dev/api/admin/profiles" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d @profile_data.json
+
+# Check live positions for all profiles
+curl -s "https://risex-trading-bot.fly.dev/api/profiles/all" | jq '.[].position_count'
+```

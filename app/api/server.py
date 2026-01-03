@@ -874,4 +874,3 @@ async def get_trading_activity(account_id: str, hours: int = 24):
     except Exception as e:
         logger.error(f"Error getting activity for {account_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-        raise HTTPException(status_code=500, detail=str(e))

@@ -44,27 +44,14 @@ class CreateProfileResponse(BaseModel):
 class APIKeyConfig:
     """Manage API keys for admin endpoints."""
     
-    # In production, store these in database or environment
-    # For now, use a simple in-memory store
-    _keys: Dict[str, str] = {}
-    
-    @classmethod
-    def generate_key(cls) -> str:
-        """Generate a new API key."""
-        key = f"ska_{secrets.token_urlsafe(32)}"
-        # In production, hash and store this
-        cls._keys[key] = "admin"
-        return key
-    
     @classmethod
     def validate_key(cls, key: str) -> bool:
         """Validate an API key."""
-        # Check environment for master key
-        master_key = settings.admin_api_key if hasattr(settings, 'admin_api_key') else None
-        if master_key and key == master_key:
-            return True
-        # Check generated keys
-        return key in cls._keys
+        # Only use the master ADMIN_API_KEY from environment for production deployment
+        # This ensures consistency across multiple instances on Fly.io
+        if not settings.admin_api_key:
+            return False
+        return key == settings.admin_api_key
 
 
 async def verify_api_key(x_api_key: str = Header(...)) -> str:
@@ -223,30 +210,8 @@ async def delete_profile(
     return {"message": f"Profile {profile_id} deactivated"}
 
 
-@router.post("/api-keys/generate")
-async def generate_api_key(
-    master_key: str = Header(None, alias="X-Master-Key")
-) -> Dict:
-    """
-    Generate a new API key (requires master key).
-    
-    In production, this would:
-    1. Verify master key from environment
-    2. Generate and hash the new key
-    3. Store in database with metadata
-    4. Return the key only once
-    """
-    # Simple check for demo - in production use proper auth
-    if master_key != "master-secret-key":
-        raise HTTPException(status_code=401, detail="Invalid master key")
-    
-    new_key = APIKeyConfig.generate_key()
-    
-    return {
-        "api_key": new_key,
-        "message": "Save this key - it won't be shown again",
-        "usage": "Include in X-API-Key header for admin endpoints"
-    }
+# Note: API key generation removed for production deployment
+# Use the ADMIN_API_KEY environment variable directly for all admin authentication
 
 
 class OrderRequest(BaseModel):
@@ -297,6 +262,7 @@ async def place_order(
                 raise ValueError(f"Market {order_request.market} not found")
             
             # Place the order
+            # RISE testnet requires order_type="limit" with price=0 for market orders
             order = await client.place_order(
                 account_key=account.private_key,
                 signer_key=account.signer_key,
@@ -304,7 +270,7 @@ async def place_order(
                 side=order_request.side,
                 size=order_request.size,
                 price=0,  # Market order
-                order_type="market"
+                order_type="limit"  # Must use "limit" for market orders on RISE testnet
             )
             
             # Save trade record
