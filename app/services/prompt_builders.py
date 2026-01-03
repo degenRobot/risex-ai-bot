@@ -148,12 +148,29 @@ CURRENT POSITIONS:
 RECENT TRADES:
 {TradingPromptBuilder._format_recent_trades(recent_trades)}
 
-AVAILABLE BALANCE: ${available_balance:,.2f}
+AVAILABLE BALANCE (Free Margin): ${available_balance:,.2f}
+
+📊 POSITION SIZING & RISK MANAGEMENT:
+Based on your free margin of ${available_balance:,.2f}, here are your MAX position sizes:
+{TradingPromptBuilder._format_max_positions(market_data, available_balance)}
+
+POSITION SIZING RULES:
+1. Use MAX 50% of free margin per trade (conservative approach)
+2. Size based on conviction: 10-20% (low), 20-35% (medium), 35-50% (high)
+3. If you have existing positions, consider total exposure
+4. Free margin = collateral available for new positions
+
+POSITION MANAGEMENT:
+- If you have open positions, you can:
+  * Add to existing position (if same direction)
+  * Close position (sell if long, buy if short) 
+  * Open opposite position (this will reduce/close existing)
+- Check your current positions above before deciding
+- Available balance = funds you can use for new trades
 
 🎯 TRADING BIAS INSTRUCTIONS:
-- You have substantial available equity (${available_balance:,.2f}) - USE IT!
+- You have ${available_balance:,.2f} available - USE IT WISELY!
 - The market is constantly moving - sitting idle means missing opportunities
-- Even small positions help you learn and adapt to market conditions
 - Your goal is to be an ACTIVE trader who takes calculated risks
 - If you have no positions and available funds, STRONGLY consider entering a trade
 - Use market volatility to your advantage - don't just observe, PARTICIPATE!
@@ -162,16 +179,16 @@ DECISION REQUIREMENTS:
 1. Analyze market conditions and your recent thoughts
 2. Consider influences from recent conversations  
 3. Make a decision consistent with your personality
-4. BIAS TOWARDS ACTION: If you have equity and no positions, strongly consider making a trade
+4. Check position sizing: max 50% of available balance per trade
 5. If trading, use execute_trade_decision tool
 6. Always update thought process with your reasoning
 7. Reference specific thoughts that influenced this decision
 
 💡 TRADING SUGGESTIONS:
-- With ${available_balance:,.2f} available, you could take positions worth 10-30% of your equity
-- Consider both BTC and ETH opportunities
+- With ${available_balance:,.2f} available, you could take positions worth up to ${available_balance * 0.5:,.2f}
+- Consider both BTC and ETH opportunities based on your analysis
 - Look for momentum, trends, or contrarian opportunities based on your personality
-- Remember: You can't profit from opportunities you don't take!
+- Remember: Position size should reflect your conviction and risk tolerance!
 
 Risk Guidelines for {base.risk_profile.value}:
 {TradingPromptBuilder._get_risk_guidelines(base.risk_profile.value)}"""
@@ -274,6 +291,25 @@ Risk Guidelines for {base.risk_profile.value}:
         if 'eth_volume' in market_data:
             lines.append(f"ETH 24h Volume: ${market_data['eth_volume']:,.0f}")
             
+        return "\n".join(lines)
+    
+    @staticmethod
+    def _format_max_positions(market_data: Dict, free_margin: float) -> str:
+        """Format maximum position sizes based on free margin."""
+        if free_margin <= 0:
+            return "No free margin available for new positions"
+        
+        lines = []
+        btc_price = market_data.get('btc_price', 90000)
+        eth_price = market_data.get('eth_price', 3100)
+        
+        # Calculate max sizes (50% of free margin)
+        max_btc_size = (free_margin * 0.5) / btc_price
+        max_eth_size = (free_margin * 0.5) / eth_price
+        
+        lines.append(f"- BTC: Max {max_btc_size:.6f} BTC (${free_margin * 0.5:,.2f} at ${btc_price:,.2f})")
+        lines.append(f"- ETH: Max {max_eth_size:.6f} ETH (${free_margin * 0.5:,.2f} at ${eth_price:,.2f})")
+        
         return "\n".join(lines)
     
     @staticmethod

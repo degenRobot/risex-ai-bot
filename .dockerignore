@@ -73,6 +73,7 @@ data/test_*
 *.pid.lock
 
 # Other project files
+archived_projects/
 ricetardio-bot/
 risex-contracts/
 risex-testing/

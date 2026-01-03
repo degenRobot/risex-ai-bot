@@ -368,18 +368,11 @@ You: [Respond in character] + [Call update_market_outlook tool]"""
                 if account_data:
                     context["available_balance"] = float(account_data.get("balance", 0))
                     
-                # Get positions
-                positions = await client.get_positions(account.address)
+                # Get positions from RISE API
+                positions = await client.get_all_positions(account.address)
                 if positions:
                     context["positions"] = positions
                     context["open_positions"] = len(positions)
-                    
-                    # Calculate P&L
-                    total_pnl = 0
-                    for pos in positions:
-                        pnl = float(pos.get("unrealizedPnl", 0))
-                        total_pnl += pnl
-                    context["current_pnl"] = total_pnl
                     
         except Exception:
             pass  # Use defaults if API fails
@@ -389,21 +382,56 @@ You: [Respond in character] + [Call update_market_outlook tool]"""
         
         # Add equity information from monitor
         equity_monitor = get_equity_monitor()
-        equity_data = equity_monitor.get_account_equity(account.address)
         
-        if equity_data:
-            context["current_equity"] = equity_data["equity"]
-            context["equity_last_updated"] = equity_data["timestamp"]
+        # First try to fetch fresh equity and margin together
+        try:
+            equity_data = await equity_monitor.fetch_equity_and_margin(account.address)
+            current_equity = equity_data.get("equity")
+            free_margin = equity_data.get("free_margin")
             
-            # Get equity change information
-            if account.equity_change_1h is not None:
-                context["equity_change_1h"] = account.equity_change_1h
-            if account.equity_change_24h is not None:
-                context["equity_change_24h"] = account.equity_change_24h
-        else:
-            context["current_equity"] = None
-            context["equity_change_1h"] = None
-            context["equity_change_24h"] = None
+            if current_equity is not None:
+                context["current_equity"] = current_equity
+                context["free_margin"] = free_margin
+                context["equity_last_updated"] = datetime.now().isoformat()
+                
+                # Calculate P&L from equity - deposit amount
+                deposit_amount = getattr(account, 'deposit_amount', 1000.0) or 1000.0
+                context["current_pnl"] = current_equity - deposit_amount
+                
+                # Use free margin as available balance
+                context["available_balance"] = free_margin or 0
+                
+                # Calculate max position sizes for display
+                if free_margin and free_margin > 0:
+                    # Get market prices
+                    btc_price = context.get("btc_price", 90000)
+                    eth_price = context.get("eth_price", 3100)
+                    
+                    # Calculate max sizes (50% of free margin)
+                    context["max_btc_size"] = (free_margin * 0.5) / btc_price
+                    context["max_eth_size"] = (free_margin * 0.5) / eth_price
+                    
+        except Exception as e:
+            print(f"⚠️ Failed to fetch fresh equity for {account.address}: {e}")
+            # Fall back to cached data
+            cached_data = equity_monitor.get_account_equity(account.address)
+            if cached_data:
+                context["current_equity"] = cached_data.get("equity", 0)
+                context["free_margin"] = cached_data.get("free_margin", 0)
+                context["equity_last_updated"] = cached_data.get("timestamp")
+                
+                # Calculate P&L from equity - deposit amount
+                deposit_amount = getattr(account, 'deposit_amount', 1000.0) or 1000.0
+                context["current_pnl"] = cached_data["equity"] - deposit_amount
+                
+                # Use free margin as available balance
+                context["available_balance"] = cached_data.get("free_margin", 0)
+        
+        # Get equity change information
+        if hasattr(account, 'equity_change_1h') and account.equity_change_1h is not None:
+            context["equity_change_1h"] = account.equity_change_1h
+        if hasattr(account, 'equity_change_24h') and account.equity_change_24h is not None:
+            context["equity_change_24h"] = account.equity_change_24h
         
         return context
     

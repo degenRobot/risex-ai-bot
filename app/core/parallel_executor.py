@@ -25,8 +25,12 @@ class ParallelProfileExecutor:
         self.storage = JSONStorage()
         self.rise_client = RiseClient()
         self.ai_client = AIClient()
-        self.trading_tools = TradingTools(self.rise_client, self.storage)
+        self.trading_tools = TradingTools(self.rise_client, self.storage, dry_run=dry_run)
         self.logger = logging.getLogger(__name__)
+        
+        # Log mode
+        mode = "DRY RUN" if dry_run else "LIVE TRADING"
+        self.logger.info(f"Parallel executor initialized in {mode} mode")
         
         # Execution state
         self.active_profiles: List[Account] = []
@@ -113,6 +117,8 @@ class ParallelProfileExecutor:
             
         except Exception as e:
             self.logger.error(f"Trading cycle error: {e}")
+            import traceback
+            traceback.print_exc()
         
         duration = (datetime.now() - start_time).total_seconds()
         self.logger.info(f"Cycle completed in {duration:.1f}s")

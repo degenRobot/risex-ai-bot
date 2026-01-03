@@ -659,3 +659,38 @@ async def get_profile_summary_v2(account_id: str):
     except Exception as e:
         logger.error(f"Error getting v2 profile summary {account_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Admin endpoints
+@app.patch("/api/admin/accounts/{account_id}")
+async def update_account_data(account_id: str, updates: Dict):
+    """Update account data (admin endpoint).
+    
+    Allows updating deposit_amount and other account fields.
+    """
+    try:
+        account = storage.get_account(account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        # Update allowed fields
+        allowed_fields = ["deposit_amount", "is_active", "has_deposited"]
+        updated = False
+        
+        for field, value in updates.items():
+            if field in allowed_fields and hasattr(account, field):
+                setattr(account, field, value)
+                updated = True
+        
+        if updated:
+            # Save updated account
+            storage.save_account(account)
+            return {"message": "Account updated", "account_id": account_id, "updates": updates}
+        else:
+            return {"message": "No valid fields to update", "allowed_fields": allowed_fields}
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating account {account_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -14,12 +14,19 @@ from .storage import JSONStorage
 # Contract configuration
 PERPS_MANAGER_ADDRESS = "0x68cAcD54a8c93A3186BF50bE6b78B761F728E1b4"
 
-# Minimal ABI for getAccountEquity
+# Minimal ABI for getAccountEquity and getFreeCrossMarginBalance
 PERPS_MANAGER_ABI = [
     {
         "inputs": [{"name": "account", "type": "address"}],
         "name": "getAccountEquity",
         "outputs": [{"name": "", "type": "int256"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [{"name": "account", "type": "address"}],
+        "name": "getFreeCrossMarginBalance",
+        "outputs": [{"name": "", "type": "uint256"}],
         "stateMutability": "view",
         "type": "function"
     }
@@ -87,9 +94,69 @@ class EquityMonitor:
         except ContractLogicError as e:
             self.logger.warning(f"Contract error for {address}: {e}")
             return None
+    
+    async def fetch_free_margin(self, address: str) -> Optional[float]:
+        """Fetch free cross margin balance for a single account."""
+        try:
+            # Ensure address has correct checksum
+            address = self.w3.to_checksum_address(address)
+            
+            # Call contract
+            free_margin_raw = await self.perps_manager.functions.getFreeCrossMarginBalance(address).call()
+            
+            # Convert from 18 decimals to USDC
+            free_margin_usdc = float(free_margin_raw) / 10**18
+            
+            return free_margin_usdc
+            
+        except ContractLogicError as e:
+            self.logger.warning(f"Contract error fetching free margin for {address}: {e}")
+            return None
         except Exception as e:
             self.logger.error(f"Failed to fetch equity for {address}: {e}")
             return None
+    
+    async def fetch_equity_and_margin(self, address: str) -> Dict[str, Optional[float]]:
+        """Fetch both equity and free margin for a single account."""
+        try:
+            # Ensure address has correct checksum
+            address = self.w3.to_checksum_address(address)
+            
+            # Fetch both values concurrently
+            equity_task = self.perps_manager.functions.getAccountEquity(address).call()
+            free_margin_task = self.perps_manager.functions.getFreeCrossMarginBalance(address).call()
+            
+            equity_raw, free_margin_raw = await asyncio.gather(equity_task, free_margin_task)
+            
+            # Convert from 18 decimals to USDC
+            equity_usdc = float(equity_raw) / 10**18
+            free_margin_usdc = float(free_margin_raw) / 10**18
+            
+            # Get current block
+            block = await self.w3.eth.get_block("latest")
+            
+            # Update cache with both values
+            self.cache[address] = {
+                "equity": equity_usdc,
+                "free_margin": free_margin_usdc,
+                "margin_used": equity_usdc - free_margin_usdc,
+                "timestamp": datetime.utcnow(),
+                "block_number": block["number"],
+                "raw_equity": str(equity_raw),
+                "raw_free_margin": str(free_margin_raw)
+            }
+            
+            return {
+                "equity": equity_usdc,
+                "free_margin": free_margin_usdc
+            }
+            
+        except ContractLogicError as e:
+            self.logger.warning(f"Contract error for {address}: {e}")
+            return {"equity": None, "free_margin": None}
+        except Exception as e:
+            self.logger.error(f"Failed to fetch equity/margin for {address}: {e}")
+            return {"equity": None, "free_margin": None}
     
     async def fetch_equity_batch(self, addresses: List[str]) -> Dict[str, Optional[float]]:
         """Batch fetch equity for multiple accounts."""
@@ -161,15 +228,21 @@ class EquityMonitor:
     
     async def update_account_equity(self, account_id: str, address: str) -> bool:
         """Update equity for a single account."""
-        equity = await self.fetch_equity(address)
+        # Fetch both equity and free margin together
+        data = await self.fetch_equity_and_margin(address)
+        
+        equity = data.get("equity")
+        free_margin = data.get("free_margin")
         
         if equity is None:
             return False
         
-        # Save snapshot
+        # Save snapshot with both values
         snapshot = {
             "timestamp": datetime.utcnow().isoformat(),
             "equity": equity,
+            "free_margin": free_margin,
+            "margin_used": equity - free_margin if free_margin else None,
             "block_number": self.cache[address].get("block_number")
         }
         
@@ -184,6 +257,8 @@ class EquityMonitor:
         
         if account_data:
             account_data["latest_equity"] = equity
+            account_data["free_margin"] = free_margin
+            account_data["margin_used"] = equity - free_margin if free_margin else 0
             account_data["equity_updated_at"] = datetime.utcnow().isoformat()
             account_data["equity_change_1h"] = changes.get("change_1h")
             account_data["equity_change_24h"] = changes.get("change_24h")
@@ -195,7 +270,8 @@ class EquityMonitor:
             
             self.logger.info(
                 f"Updated equity for {account_data.get('handle', account_id)}: "
-                f"${equity:,.2f} (1h: {f'{change_1h:+.1f}%' if change_1h is not None else 'N/A'}, "
+                f"${equity:,.2f} (Free: ${free_margin:,.2f}) "
+                f"(1h: {f'{change_1h:+.1f}%' if change_1h is not None else 'N/A'}, "
                 f"24h: {f'{change_24h:+.1f}%' if change_24h is not None else 'N/A'})"
             )
         
