@@ -60,9 +60,11 @@ docs/_build/
 # Fly.io
 fly.toml
 
-# Local data (will use volume in production)
-data/
+# Local data (we include this for initial setup)
+# data/
 backups/
+data/*.backup
+data/test_*
 
 # Development files
 *.log
@@ -71,7 +73,27 @@ backups/
 *.pid.lock
 
 # Other project files
+archived_projects/
 ricetardio-bot/
 risex-contracts/
 risex-testing/
+risex-backend/
 links.md
+
+# Test files
+test_*.py
+test_*.json
+*.test.py
+*.test.json
+test_chat.json
+test_tool_calling.py
+
+# Documentation (except key files)
+*.md
+!README.md
+!CLAUDE.md
+!DEPLOYMENT.md
+
+# Scripts not needed in production
+scripts/test_*.py
+scripts/test_*.sh

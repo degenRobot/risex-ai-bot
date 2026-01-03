@@ -94,8 +94,10 @@ async def main():
             
     except KeyboardInterrupt:
         print("\n\n⚠️  Shutting down trading bot...")
+        await executor.shutdown()
     except Exception as e:
         print(f"\n❌ Fatal error: {e}")
+        await executor.shutdown()
         import traceback
         traceback.print_exc()
     finally:

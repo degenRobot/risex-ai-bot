@@ -13,9 +13,10 @@ from ..pending_actions import (
 class TradingTools:
     """Collection of trading tools available to AI agents."""
     
-    def __init__(self, rise_client, storage):
+    def __init__(self, rise_client, storage, dry_run: bool = True):
         self.rise_client = rise_client
         self.storage = storage
+        self.dry_run = dry_run
         self.logger = logging.getLogger(__name__)
     
     @property
@@ -42,9 +43,9 @@ class TradingTools:
                             },
                             "size_percent": {
                                 "type": "number",
-                                "description": "Size as percentage of available balance (0.01 to 1.0)",
+                                "description": "Size as percentage of available balance (0.01 to 0.5 max)",
                                 "minimum": 0.01,
-                                "maximum": 1.0
+                                "maximum": 0.5
                             }
                         },
                         "required": ["market", "side", "size_percent"]
@@ -290,45 +291,86 @@ class TradingTools:
         self, account_id: str, persona_name: str, account_key: str, 
         signer_key: str, market: str, side: str, size_percent: float
     ) -> Dict[str, Any]:
-        """Place immediate market order."""
+        """Place immediate market order using limit order with price=0."""
         # Get market ID
         from ..core.market_manager import get_market_manager
         market_mgr = get_market_manager()
-        market_data = await market_mgr.get_market_by_symbol(market)
+        market_data = market_mgr.get_market_by_symbol(market)
         
         if not market_data:
             return {"success": False, "error": f"Market {market} not found"}
         
         market_id = int(market_data.get("market_id", 0))
-        current_price = float(market_data.get("price", 0))
+        current_price = float(market_data.get("index_price", market_data.get("last_price", 0)))
         
-        # Get available balance
+        # Get available balance from free margin
         from eth_account import Account as EthAccount
         account_address = EthAccount.from_key(account_key).address
-        balance_data = await self.rise_client.get_balance(account_address)
-        available = float(balance_data.get("cross_margin_balance", 0))
         
-        # Calculate size
+        # Use equity monitor for accurate free margin
+        from ..services.equity_monitor import get_equity_monitor
+        equity_monitor = get_equity_monitor()
+        try:
+            # Get both equity and free margin
+            equity_data = await equity_monitor.fetch_equity_and_margin(account_address)
+            available = equity_data.get("free_margin", 0)
+            
+            if available is None or available <= 0:
+                # Try to get from cache
+                cached = equity_monitor.get_account_equity(account_address)
+                if cached and "free_margin" in cached:
+                    available = cached["free_margin"]
+                else:
+                    available = 0
+                    
+        except Exception as e:
+            self.logger.warning(f"Failed to get free margin, using zero: {e}")
+            available = 0
+        
+        if available is None or available <= 0:
+            return {"success": False, "error": "No available balance"}
+        
+        # Calculate size with minimum of 0.001 BTC
         size = (available * size_percent) / current_price
+        min_size = 0.001 if market == "BTC" else 0.01  # ETH min size
         
-        # Place order with slippage
-        slippage_price = current_price * 1.01 if side == "buy" else current_price * 0.99
+        if size < min_size:
+            size = min_size
         
-        result = await self.rise_client.place_order(
-            account_key=account_key,
-            signer_key=signer_key,
-            market_id=market_id,
-            size=size,
-            price=slippage_price,
-            side=side,
-            order_type="limit"  # Use limit with slippage for market
-        )
+        # Check if in dry run mode
+        if self.dry_run:
+            self.logger.info(f"🧪 DRY RUN: Would place {side} market order for {size:.4f} {market}")
+            result = {
+                "success": True,
+                "data": {
+                    "order_id": f"dry_run_{account_id}_{market}_{side}",
+                    "transaction_hash": "0xdryrun"
+                }
+            }
+        else:
+            # Place real market order using limit with price=0 (as per docs)
+            result = await self.rise_client.place_market_order(
+                account_key=account_key,
+                signer_key=signer_key,
+                market_id=market_id,
+                size=size,
+                side=side,
+                reduce_only=False
+            )
+        
+        # Check if order was placed successfully
+        success = bool(result and "data" in result and result["data"].get("order_id"))
+        
+        if success:
+            # Log the successful order
+            self.logger.info(f"✅ Market order placed: {side} {size:.4f} {market} @ ${current_price:,.2f}")
         
         return {
-            "success": result.get("success", False),
-            "order_id": result.get("data", {}).get("order_id"),
+            "success": success,
+            "order_id": result.get("data", {}).get("order_id") if result else None,
             "executed_size": size,
-            "executed_price": slippage_price
+            "market_price": current_price,
+            "error": None if success else "Order placement failed"
         }
     
     async def _place_limit_order(
@@ -340,7 +382,7 @@ class TradingTools:
         # Similar to market order but with exact price
         from ..core.market_manager import get_market_manager
         market_mgr = get_market_manager()
-        market_data = await market_mgr.get_market_by_symbol(market)
+        market_data = market_mgr.get_market_by_symbol(market)
         
         if not market_data:
             return {"success": False, "error": f"Market {market} not found"}
@@ -381,13 +423,13 @@ class TradingTools:
         # Get position
         from ..core.market_manager import get_market_manager
         market_mgr = get_market_manager()
-        market_data = await market_mgr.get_market_by_symbol(market)
+        market_data = market_mgr.get_market_by_symbol(market)
         
         if not market_data:
             return {"success": False, "error": f"Market {market} not found"}
         
         market_id = int(market_data.get("market_id", 0))
-        current_price = float(market_data.get("price", 0))
+        current_price = float(market_data.get("index_price", market_data.get("last_price", 0)))
         
         from eth_account import Account as EthAccount
         account_address = EthAccount.from_key(account_key).address

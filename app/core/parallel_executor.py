@@ -10,6 +10,7 @@ from ..models import Account
 from ..pending_actions import PendingAction, ActionStatus, PendingActionSummary
 from ..services.ai_client import AIClient
 from ..services.ai_tools import TradingTools
+from ..services.equity_monitor import get_equity_monitor
 from ..services.rise_client import RiseClient
 from ..services.storage import JSONStorage
 
@@ -20,11 +21,16 @@ class ParallelProfileExecutor:
     def __init__(self, dry_run: bool = True):
         self.dry_run = dry_run
         self.market_manager = get_market_manager()
+        self.equity_monitor = get_equity_monitor()
         self.storage = JSONStorage()
         self.rise_client = RiseClient()
         self.ai_client = AIClient()
-        self.trading_tools = TradingTools(self.rise_client, self.storage)
+        self.trading_tools = TradingTools(self.rise_client, self.storage, dry_run=dry_run)
         self.logger = logging.getLogger(__name__)
+        
+        # Log mode
+        mode = "DRY RUN" if dry_run else "LIVE TRADING"
+        self.logger.info(f"Parallel executor initialized in {mode} mode")
         
         # Execution state
         self.active_profiles: List[Account] = []
@@ -53,6 +59,20 @@ class ParallelProfileExecutor:
         
         # Start background market updates
         await self.market_manager.start_background_updates()
+        
+        # Start background equity polling
+        await self.equity_monitor.start_polling()
+    
+    async def shutdown(self):
+        """Shutdown executor and cleanup background tasks."""
+        self.logger.info("Shutting down parallel executor...")
+        self.is_running = False
+        
+        # Stop background services
+        await self.market_manager.stop_background_updates()
+        await self.equity_monitor.stop_polling()
+        
+        self.logger.info("Parallel executor shutdown complete")
     
     async def run_cycle(self):
         """Run one complete trading cycle for all profiles."""
@@ -97,6 +117,8 @@ class ParallelProfileExecutor:
             
         except Exception as e:
             self.logger.error(f"Trading cycle error: {e}")
+            import traceback
+            traceback.print_exc()
         
         duration = (datetime.now() - start_time).total_seconds()
         self.logger.info(f"Cycle completed in {duration:.1f}s")
@@ -118,6 +140,26 @@ class ParallelProfileExecutor:
         try:
             positions = await self.rise_client.get_all_positions(profile.address)
             position_count = len([p for p in positions if float(p.get("size", 0)) != 0])
+            
+            # Save position snapshots for tracking
+            for pos_data in positions:
+                if float(pos_data.get("size", 0)) != 0:  # Only save open positions
+                    try:
+                        from app.models import Position
+                        position = Position(
+                            account_id=profile.id,
+                            market=pos_data.get("market", ""),
+                            side=pos_data.get("side", ""),
+                            size=float(pos_data.get("size", 0)),
+                            entry_price=float(pos_data.get("avgPrice", 0)),
+                            mark_price=float(pos_data.get("markPrice", 0)),
+                            notional_value=float(pos_data.get("notionalValue", 0)),
+                            unrealized_pnl=float(pos_data.get("unrealizedPnl", 0)),
+                            realized_pnl=float(pos_data.get("realizedPnl", 0)),
+                        )
+                        self.storage.save_position_snapshot(position)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to save position snapshot: {e}")
             
             # Calculate P&L
             pnl_data = await self.rise_client.calculate_pnl(profile.address)
@@ -147,13 +189,24 @@ class ParallelProfileExecutor:
         recent_trades = self.storage.get_trades(profile.id, limit=10)
         recent_decisions = self.storage.get_recent_successful_decisions(profile.id, days=7)
         
-        # 4. Get balance
+        # 4. Get balance and equity
         try:
             balance_data = await self.rise_client.get_balance(profile.address)
             available_balance = float(balance_data.get("cross_margin_balance", 1000.0))
             self.logger.info(f"   Available balance: ${available_balance:.2f}")
         except Exception:
             available_balance = 1000.0  # Testnet default
+        
+        # Get latest equity from monitor
+        equity_summary = self.equity_monitor.get_equity_summary()
+        account_equity_data = self.equity_monitor.get_account_equity(profile.address)
+        
+        if account_equity_data:
+            current_equity = account_equity_data["equity"]
+            equity_age = (datetime.now() - account_equity_data["timestamp"]).total_seconds() / 60
+            self.logger.info(f"   On-chain equity: ${current_equity:,.2f} (updated {equity_age:.0f}m ago)")
+        else:
+            current_equity = None
         
         # 5. Call AI with tools
         try:
@@ -165,7 +218,8 @@ class ParallelProfileExecutor:
                 recent_trades=recent_trades,
                 recent_decisions=recent_decisions,
                 available_balance=available_balance,
-                total_pnl=total_pnl
+                total_pnl=total_pnl,
+                current_equity=current_equity
             )
             
             # 6. Execute tool calls
@@ -209,7 +263,8 @@ class ParallelProfileExecutor:
     async def _get_ai_decision_with_tools(
         self, profile: Account, market_data: Dict, positions: List[Dict],
         pending_actions: PendingActionSummary, recent_trades: List,
-        recent_decisions: List, available_balance: float, total_pnl: float
+        recent_decisions: List, available_balance: float, total_pnl: float,
+        current_equity: Optional[float] = None
     ):
         """Get AI decision using OpenRouter with tool calling."""
         persona = profile.persona
@@ -219,6 +274,17 @@ class ParallelProfileExecutor:
         
         # Format pending actions
         pending_summary = self._format_pending_actions(pending_actions)
+        
+        # Build equity info
+        equity_info = ""
+        if current_equity is not None:
+            equity_info = f"\n- On-chain Equity: ${current_equity:,.2f} (live from blockchain)"
+            # Add equity change info if available
+            account = self.storage.get_account(profile.id)
+            if account and account.equity_change_1h is not None:
+                equity_info += f"\n- Equity Change (1h): {account.equity_change_1h:+.1f}%"
+            if account and account.equity_change_24h is not None:
+                equity_info += f"\n- Equity Change (24h): {account.equity_change_24h:+.1f}%"
         
         # Build system prompt
         system_prompt = f"""You are {persona.name}, a crypto trader with the following profile:
@@ -232,7 +298,7 @@ Current Market Data:
 
 Your Portfolio:
 - Available Balance: ${available_balance:,.2f}
-- Total P&L: ${total_pnl:+.2f}
+- Total P&L: ${total_pnl:+.2f}{equity_info}
 - Current Positions: {position_summary}
 
 Pending Actions: {pending_summary}

@@ -4,12 +4,16 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+from fastapi import Query
 import logging
 
 from ..services.storage import JSONStorage
 from ..services.profile_chat import ProfileChatService
+from ..services.equity_monitor import get_equity_monitor
+from ..services.async_data_manager import AsyncDataManager
 from ..models import Account
 from ..pending_actions import ActionStatus
+from .profile_manager import router as admin_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -40,16 +44,43 @@ chat_service = ProfileChatService()
 # Active trading status (managed by main bot)
 active_traders = {}
 
+# Include admin router
+app.include_router(admin_router)
+
+
+# Application startup
+@app.on_event("startup")
+async def startup():
+    """Initialize services on startup."""
+    logger.info("Starting RISE AI Trading Bot API...")
+    
+    # Check and repair data files if needed
+    try:
+        logger.info("Validating data files...")
+        repair_results = storage.repair_all_data_files()
+        repaired = [f for f, status in repair_results.items() if status == "repaired"]
+        if repaired:
+            logger.warning(f"Repaired corrupted files: {', '.join(repaired)}")
+        else:
+            logger.info("All data files are valid")
+    except Exception as e:
+        logger.error(f"Failed to validate data files: {e}")
+    
+    logger.info("API startup complete")
+
 
 class ProfileSummary(BaseModel):
     """Profile summary response."""
+    account_id: str  # Added for frontend
     handle: str
     name: str
     trading_style: str
     is_trading: bool
     total_pnl: float
+    net_pnl: float  # Current equity - initial deposit
+    current_equity: Optional[float]  # Current account value
     position_count: int
-    pending_actions: int
+    pending_actions: int  # Count of conditional orders (stop loss, take profit)
 
 
 class ChatRequest(BaseModel):
@@ -71,6 +102,7 @@ class ChatResponse(BaseModel):
 
 class ProfileDetail(BaseModel):
     """Detailed profile response."""
+    account_id: str  # Added for frontend
     handle: str
     name: str
     bio: str
@@ -79,8 +111,8 @@ class ProfileDetail(BaseModel):
     personality_traits: List[str]
     is_trading: bool
     account_address: str
-    positions: Dict[str, Any]
-    pending_actions: List[Dict[str, Any]]
+    positions: List[Dict[str, Any]]  # Current open positions from RISE API
+    pending_actions: List[Dict[str, Any]]  # Conditional orders (stop loss, take profit)
     recent_trades: List[Dict[str, Any]]
     total_pnl: float
     win_rate: Optional[float]
@@ -91,6 +123,15 @@ class ActionResponse(BaseModel):
     success: bool
     message: str
     data: Optional[Dict[str, Any]] = None
+
+
+class ProfilesResponse(BaseModel):
+    """Paginated profiles response."""
+    profiles: List[ProfileSummary]
+    total: int
+    page: int
+    limit: int
+    has_more: bool
 
 
 @app.get("/")
@@ -123,15 +164,28 @@ async def health_check():
         }
 
 
-@app.get("/api/profiles", response_model=List[ProfileSummary])
-async def list_profiles():
-    """List all trading profiles."""
+@app.get("/api/profiles", response_model=ProfilesResponse)
+async def list_profiles(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page")
+):
+    """List all trading profiles with pagination."""
     try:
         accounts = storage.list_accounts()
+        equity_monitor = get_equity_monitor()
         profiles = []
+        seen_handles = set()  # Track seen handles for deduplication
+        
+        # Default initial deposit amount (all profiles start with this)
+        DEFAULT_INITIAL_DEPOSIT = 1000.0
         
         for account in accounts:
             if account.persona:
+                # Skip if we've already seen this handle (deduplication)
+                if account.persona.handle in seen_handles:
+                    continue
+                seen_handles.add(account.persona.handle)
+                
                 # Get trading status from external tracking
                 is_trading = account.id in active_traders
                 
@@ -142,24 +196,63 @@ async def list_profiles():
                     status=ActionStatus.PENDING
                 )
                 
-                # Calculate basic P&L (simplified)
-                trades = storage.get_trades(account.id, limit=100)
-                total_pnl = sum(t.pnl for t in trades if hasattr(t, 'pnl') and t.pnl)
+                # Get current equity from on-chain
+                current_equity = None
+                net_pnl = 0.0
+                try:
+                    current_equity = await equity_monitor.fetch_equity(account.address)
+                    if current_equity is not None:
+                        # Use the actual deposit amount if available, otherwise use default
+                        initial_deposit = getattr(account, 'deposit_amount', DEFAULT_INITIAL_DEPOSIT) or DEFAULT_INITIAL_DEPOSIT
+                        net_pnl = current_equity - initial_deposit
+                except Exception as e:
+                    logger.warning(f"Could not fetch equity for {account.address}: {e}")
+                
+                # Calculate P&L from analytics (for backward compatibility)
+                analytics = storage.get_trading_analytics(account.id)
+                total_pnl = analytics.get("total_pnl", 0.0)
                 
                 profiles.append(ProfileSummary(
+                    account_id=account.id,
                     handle=account.persona.handle,
                     name=account.persona.name,
                     trading_style=account.persona.trading_style.value,
                     is_trading=is_trading,
                     total_pnl=total_pnl,
+                    net_pnl=net_pnl,
+                    current_equity=current_equity,
                     position_count=len(positions),
                     pending_actions=len(pending_actions)
                 ))
         
-        return profiles
+        # Apply pagination
+        total = len(profiles)
+        start_idx = (page - 1) * limit
+        end_idx = start_idx + limit
+        paginated_profiles = profiles[start_idx:end_idx]
+        
+        return ProfilesResponse(
+            profiles=paginated_profiles,
+            total=total,
+            page=page,
+            limit=limit,
+            has_more=end_idx < total
+        )
         
     except Exception as e:
         logger.error(f"Error listing profiles: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/profiles/all", response_model=List[ProfileSummary])
+async def list_all_profiles():
+    """List all trading profiles without pagination (backward compatibility)."""
+    try:
+        # Call paginated endpoint with high limit
+        response = await list_profiles(page=1, limit=1000)
+        return response.profiles
+    except Exception as e:
+        logger.error(f"Error listing all profiles: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -189,13 +282,15 @@ async def get_profile(handle: str):
         )
         pending_summary = []
         for action in pending_actions:
-            pending_summary.append({
+            action_summary = {
                 "id": action.id,
                 "type": action.action_type.value,
                 "condition": f"{action.condition.field} {action.condition.operator.value} {action.condition.value}",
                 "market": action.action_params.market,
-                "created_at": action.created_at.isoformat()
-            })
+                "created_at": action.created_at.isoformat(),
+                "description": f"{action.action_type.value.replace('_', ' ').title()} for {action.action_params.market} when {action.condition.field} {action.condition.operator.value} {action.condition.value}"
+            }
+            pending_summary.append(action_summary)
         
         # Get recent trades
         trades = storage.get_trades(account.id, limit=10)
@@ -215,10 +310,13 @@ async def get_profile(handle: str):
         # Calculate analytics
         analytics = storage.get_trading_analytics(account.id)
         
-        # Mock positions (would be fetched from RISE API)
-        positions = {}
+        # Get positions from stored account data (fetched by equity monitor)
+        accounts = storage.get_all_accounts()
+        stored_account = accounts.get(account.id, {})
+        positions = stored_account.get("positions", [])
         
         return ProfileDetail(
+            account_id=account.id,  # Include account_id
             handle=account.persona.handle,
             name=account.persona.name,
             bio=account.persona.bio,
@@ -564,4 +662,215 @@ async def get_profile_summary_v2(account_id: str):
         raise
     except Exception as e:
         logger.error(f"Error getting v2 profile summary {account_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Admin endpoints
+@app.patch("/api/admin/accounts/{account_id}")
+async def update_account_data(account_id: str, updates: Dict):
+    """Update account data (admin endpoint).
+    
+    Allows updating deposit_amount and other account fields.
+    """
+    try:
+        account = storage.get_account(account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        # Update allowed fields
+        allowed_fields = ["deposit_amount", "is_active", "has_deposited"]
+        updated = False
+        
+        for field, value in updates.items():
+            if field in allowed_fields and hasattr(account, field):
+                setattr(account, field, value)
+                updated = True
+        
+        if updated:
+            # Save updated account
+            storage.save_account(account)
+            return {"message": "Account updated", "account_id": account_id, "updates": updates}
+        else:
+            return {"message": "No valid fields to update", "allowed_fields": allowed_fields}
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating account {account_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Trading signals and activity endpoints
+@app.get("/api/profiles/{account_id}/signals")
+async def get_trading_signals(account_id: str, limit: int = 10):
+    """Get recent trading signals and thought process for transparency."""
+    try:
+        # Check if account exists
+        account = storage.get_account(account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        # Get recent thought processes
+        from ..services.thought_process import ThoughtProcessManager
+        thought_manager = ThoughtProcessManager()
+        
+        # Get trading-related thoughts
+        recent_thoughts = await thought_manager.get_recent(
+            account_id=account_id,
+            limit=limit,
+            purpose="trading_decision"
+        )
+        
+        # Get trading decisions
+        decisions = storage.get_trading_decisions(account_id, limit=limit)
+        
+        # Format signals
+        signals = []
+        
+        # Add trading decisions as signals
+        for decision in decisions:
+            signal = {
+                "id": decision.get("id"),
+                "type": "trade_decision",
+                "market": decision.get("market", "Unknown"),
+                "action": decision.get("action", "analyze"),
+                "confidence": decision.get("confidence", 0.5),
+                "size": decision.get("size"),
+                "reason": decision.get("reasoning", "No reason provided"),
+                "created_at": decision.get("timestamp"),
+                "status": "executed" if decision.get("executed") else "analyzed",
+                "result": decision.get("result")
+            }
+            signals.append(signal)
+        
+        # Add thought processes as signals
+        for thought in recent_thoughts:
+            if thought.get("entry_type") == "market_analysis":
+                content = thought.get("content", {})
+                signal = {
+                    "id": thought.get("id"),
+                    "type": "market_analysis",
+                    "market": content.get("market", "General"),
+                    "action": content.get("action", "analyze"),
+                    "confidence": content.get("confidence", 0.5),
+                    "reason": content.get("analysis", "Market analysis in progress"),
+                    "created_at": thought.get("timestamp"),
+                    "status": "analyzing"
+                }
+                signals.append(signal)
+        
+        # Sort by timestamp
+        signals.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        
+        return {
+            "account_id": account_id,
+            "signals": signals[:limit],
+            "total_signals": len(signals)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting signals for {account_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/profiles/{account_id}/activity")
+async def get_trading_activity(account_id: str, hours: int = 24):
+    """Get recent trading activity and bot actions."""
+    try:
+        # Check if account exists
+        account = storage.get_account(account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        from datetime import datetime, timedelta
+        cutoff_time = datetime.now() - timedelta(hours=hours)
+        
+        activities = []
+        
+        # Get recent trades
+        trades = storage.get_trades(account_id, limit=50)
+        for trade in trades:
+            if trade.timestamp > cutoff_time:
+                activity = {
+                    "type": "trade",
+                    "action": f"{trade.side.upper()} {trade.size} {trade.market} at ${trade.price}",
+                    "timestamp": trade.timestamp.isoformat(),
+                    "details": {
+                        "market": trade.market,
+                        "side": trade.side,
+                        "size": trade.size,
+                        "price": trade.price,
+                        "status": trade.status
+                    }
+                }
+                activities.append(activity)
+        
+        # Get equity updates
+        snapshots = storage.get_equity_snapshots(account_id)
+        recent_snapshots = [s for s in snapshots if datetime.fromisoformat(s["timestamp"]) > cutoff_time]
+        
+        for snapshot in recent_snapshots[-5:]:  # Last 5 equity updates
+            activity = {
+                "type": "equity_update",
+                "action": f"Equity updated to ${snapshot['equity']:,.2f}",
+                "timestamp": snapshot["timestamp"],
+                "details": {
+                    "equity": snapshot["equity"],
+                    "free_margin": snapshot.get("free_margin"),
+                    "positions_count": snapshot.get("positions_count", 0)
+                }
+            }
+            activities.append(activity)
+        
+        # Get thought process updates
+        from ..services.thought_process import ThoughtProcessManager
+        thought_manager = ThoughtProcessManager()
+        recent_thoughts = await thought_manager.get_recent(
+            account_id=account_id,
+            limit=20
+        )
+        
+        for thought in recent_thoughts:
+            thought_time = datetime.fromisoformat(thought["timestamp"])
+            if thought_time > cutoff_time:
+                content = thought.get("content", {})
+                if thought["entry_type"] == "chat_influence":
+                    activity = {
+                        "type": "chat_influence",
+                        "action": f"Updated {content.get('asset', 'market')} outlook: {content.get('outlook', 'Unknown')}",
+                        "timestamp": thought["timestamp"],
+                        "details": content
+                    }
+                    activities.append(activity)
+                elif thought["entry_type"] == "market_analysis":
+                    activity = {
+                        "type": "market_analysis",
+                        "action": content.get("analysis", "Analyzed market conditions"),
+                        "timestamp": thought["timestamp"],
+                        "details": content
+                    }
+                    activities.append(activity)
+        
+        # Sort by timestamp
+        activities.sort(key=lambda x: x["timestamp"], reverse=True)
+        
+        # Check if bot is actively trading
+        is_active = account_id in active_traders
+        last_activity = activities[0]["timestamp"] if activities else None
+        
+        return {
+            "account_id": account_id,
+            "is_trading_active": is_active,
+            "last_activity": last_activity,
+            "activities": activities[:50],  # Limit to 50 most recent
+            "total_activities": len(activities),
+            "time_range_hours": hours
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting activity for {account_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

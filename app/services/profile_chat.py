@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from .ai_client import AIClient
+from .equity_monitor import get_equity_monitor
 from .storage import JSONStorage
 from .rise_client import RiseClient
 from .speech_styles import speechDict
@@ -122,13 +123,17 @@ class ProfileChatService:
         profile_mapping = {
             "crypto_degen": "leftCurve",
             "btc_hodler": "cynical", 
-            "trend_master": "midwit",
-            "market_contrarian": "cynical",
-            "yolo_king": "leftCurve"
+            "trend_master": "midCurve",
+            "market_contrarian": "rightCurve",
+            "yolo_king": "leftCurve",
+            # Direct curve mappings
+            "leftCurve": "leftCurve",
+            "midCurve": "midCurve",
+            "rightCurve": "rightCurve"
         }
         
-        # Default to leftCurve if not mapped
-        profile_type = profile_mapping.get(account.persona.handle, "leftCurve")
+        # Default to midCurve if not mapped
+        profile_type = profile_mapping.get(account.persona.handle, "midCurve")
         
         profile = create_trader_profile(profile_type, account_id)
         self.trader_profiles[account_id] = profile
@@ -181,6 +186,9 @@ TRADING CONTEXT:
 - Current P&L: ${context.get('current_pnl', 0):.2f}
 - Open Positions: {context.get('open_positions', 0)}
 - Available Balance: ${context.get('available_balance', 0):.2f}
+- On-chain Equity: ${context.get('current_equity') or 0:,.2f} {'(live)' if context.get('current_equity') is not None else '(N/A)'}
+- Equity Change (1h): {f"{context.get('equity_change_1h'):+.1f}%" if context.get('equity_change_1h') is not None else 'N/A'}
+- Equity Change (24h): {f"{context.get('equity_change_24h'):+.1f}%" if context.get('equity_change_24h') is not None else 'N/A'}
 
 CRITICAL TOOL USAGE RULES:
 1. ALWAYS use update_market_outlook when users mention:
@@ -350,34 +358,102 @@ You: [Respond in character] + [Call update_market_outlook tool]"""
             "open_positions": 0,
             "available_balance": 0,
             "positions": [],
-            "recent_trades": []
+            "recent_trades": [],
+            "orders": [],
+            "orders_count": 0
         }
         
-        try:
-            # Get account balance
-            async with self.rise_client as client:
-                account_data = await client.get_account(account.address)
-                if account_data:
-                    context["available_balance"] = float(account_data.get("balance", 0))
-                    
-                # Get positions
-                positions = await client.get_positions(account.address)
-                if positions:
-                    context["positions"] = positions
-                    context["open_positions"] = len(positions)
-                    
-                    # Calculate P&L
-                    total_pnl = 0
-                    for pos in positions:
-                        pnl = float(pos.get("unrealizedPnl", 0))
-                        total_pnl += pnl
-                    context["current_pnl"] = total_pnl
-                    
-        except Exception:
-            pass  # Use defaults if API fails
+        # Get stored account data which includes positions from equity monitor
+        accounts = self.storage.get_all_accounts()
+        stored_account = accounts.get(account.id, {})
+        
+        # Use positions from stored data (fetched by equity monitor)
+        if "positions" in stored_account:
+            context["positions"] = stored_account["positions"]
+            context["open_positions"] = len(stored_account["positions"])
+        
+        # Use orders from stored data (fetched by equity monitor)
+        if "orders" in stored_account:
+            context["orders"] = stored_account["orders"]
+            context["orders_count"] = len(stored_account["orders"])
         
         # Get recent trades from storage
         context["recent_trades"] = self.storage.get_recent_trades(account.id, limit=5)
+        
+        # Add equity information from monitor
+        equity_monitor = get_equity_monitor()
+        
+        # First try to fetch fresh equity, margin, and positions together
+        try:
+            equity_data = await equity_monitor.fetch_equity_margin_and_positions(account.address)
+            current_equity = equity_data.get("equity")
+            free_margin = equity_data.get("free_margin")
+            positions = equity_data.get("positions", [])
+            orders = equity_data.get("orders", [])
+            
+            if current_equity is not None:
+                context["current_equity"] = current_equity
+                context["free_margin"] = free_margin
+                context["equity_last_updated"] = datetime.now().isoformat()
+                
+                # Calculate P&L from equity - deposit amount
+                deposit_amount = getattr(account, 'deposit_amount', 1000.0) or 1000.0
+                context["current_pnl"] = current_equity - deposit_amount
+                
+                # Use free margin as available balance
+                context["available_balance"] = free_margin or 0
+                
+                # Update positions from fresh fetch
+                if positions is not None:
+                    context["positions"] = positions
+                    context["open_positions"] = len(positions)
+                
+                # Update orders from fresh fetch
+                if orders is not None:
+                    context["orders"] = orders
+                    context["orders_count"] = len(orders)
+                
+                # Calculate max position sizes for display
+                if free_margin and free_margin > 0:
+                    # Get market prices
+                    btc_price = context.get("btc_price", 90000)
+                    eth_price = context.get("eth_price", 3100)
+                    
+                    # Calculate max sizes (50% of free margin)
+                    context["max_btc_size"] = (free_margin * 0.5) / btc_price
+                    context["max_eth_size"] = (free_margin * 0.5) / eth_price
+                    
+        except Exception as e:
+            print(f"⚠️ Failed to fetch fresh equity for {account.address}: {e}")
+            # Fall back to cached data
+            cached_data = equity_monitor.get_account_equity(account.address)
+            if cached_data:
+                context["current_equity"] = cached_data.get("equity", 0)
+                context["free_margin"] = cached_data.get("free_margin", 0)
+                context["equity_last_updated"] = cached_data.get("timestamp")
+                
+                # Calculate P&L from equity - deposit amount
+                deposit_amount = getattr(account, 'deposit_amount', 1000.0) or 1000.0
+                context["current_pnl"] = cached_data["equity"] - deposit_amount
+                
+                # Use free margin as available balance
+                context["available_balance"] = cached_data.get("free_margin", 0)
+                
+                # Use cached positions if available
+                if "positions" in cached_data:
+                    context["positions"] = cached_data["positions"]
+                    context["open_positions"] = len(cached_data["positions"])
+                
+                # Use cached orders if available
+                if "orders" in cached_data:
+                    context["orders"] = cached_data["orders"]
+                    context["orders_count"] = len(cached_data["orders"])
+        
+        # Get equity change information
+        if hasattr(account, 'equity_change_1h') and account.equity_change_1h is not None:
+            context["equity_change_1h"] = account.equity_change_1h
+        if hasattr(account, 'equity_change_24h') and account.equity_change_24h is not None:
+            context["equity_change_24h"] = account.equity_change_24h
         
         return context
     
@@ -465,7 +541,7 @@ You: [Respond in character] + [Call update_market_outlook tool]"""
                 "core_personality": profile.base_persona.core_personality,
                 "risk_profile": profile.base_persona.risk_profile.value,
                 "speech_style": profile.base_persona.speech_style,
-                "core_beliefs": profile.base_persona.core_beliefs
+                "core_beliefs": list(profile.base_persona.core_beliefs.values()) if isinstance(profile.base_persona.core_beliefs, dict) else []
             },
             "current_thinking": {
                 "market_outlooks": profile.current_thinking.market_outlooks,

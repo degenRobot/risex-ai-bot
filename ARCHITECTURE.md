@@ -1,298 +1,360 @@
-# RISE AI Trading Bot Architecture
+# Architecture Overview
 
-## Overview
+## System Design
 
-The RISE AI Trading Bot uses a modular architecture with immutable base personalities and mutable "thought processes" that evolve through both user interactions and trading experiences.
+The RISE AI Trading Bot is an autonomous trading system where AI traders with unique personalities make decisions on RISE perpetuals DEX. Users can influence trading behavior through chat conversations.
 
-## Core Architecture Flow
+**Key Innovation**: Chat-driven AI personality influence system with real-time trading integration and dynamic position sizing based on blockchain free margin.
+
+### Component Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                          AI Trader Profile                           │
-├─────────────────────┬───────────────────────────────────────────────┤
-│  Immutable Base     │           Mutable Current State               │
-│  ├─ Personality     │  ├─ Thought Process (shared, async)          │
-│  ├─ Core Beliefs    │  ├─ Market Outlooks                          │
-│  ├─ Speech Style    │  ├─ Recent Influences                        │
-│  └─ Risk Profile    │  └─ Trading Decisions                        │
-└─────────────────────┴───────────────────────────────────────────────┘
-                ↑                           ↑
-                │                           │
-    ┌───────────┴────────┐       ┌─────────┴──────────┐
-    │   Chat Interface   │       │  Trading Engine    │
-    │  - User messages   │       │  - Market data     │
-    │  - AI responses    │       │  - Position calc   │
-    │  - Tool calls      │       │  - Order placement │
-    └────────────────────┘       └────────────────────┘
+┌─────────────────────┐     ┌─────────────────────┐     ┌─────────────────────┐
+│    Chat API         │     │   Trading Engine    │     │  Account Manager    │
+│  (User Influence)   │     │ (Parallel Executor) │     │  (Fresh Creation)   │
+└──────────┬──────────┘     └──────────┬──────────┘     └──────────┬──────────┘
+           │                           │                           │
+           │                           │                           │
+           ▼                           ▼                           ▼
+    ┌───────────────────────────────────────────────────────────────────────┐
+    │                    Shared Profile System                              │
+    │              (AI Personalities + Tool Calling)                       │
+    └───────────────────────────────────────────────────────────────────────┘
+                       │                           │
+                       ▼                           ▼
+    ┌──────────────────────────────────┐    ┌──────────────────────────────────┐
+    │        Equity Monitor            │    │         Market Manager          │
+    │   (RPC: equity + free margin)    │    │    (Live RISE API Data)        │
+    └──────────────────────────────────┘    └──────────────────────────────────┘
+                       │                           │
+                       ▼                           ▼
+    ┌───────────────────────────────────────────────────────────────────────┐
+    │                         JSON Storage                                  │
+    │  (accounts, equity, markets, chat, thoughts, trades, free margin)     │
+    └───────────────────────────────────────────────────────────────────────┘
 ```
 
-## Thought Process Management
+### Data Flow
 
-### Structure
-The thought process is a chronological log of decisions, influences, and reasoning:
+```
+Fresh Account Creation:
+Keys Generated → Signer Registration → USDC Deposit → Profile Creation → Ready for Trading
 
-```json
-{
-  "thought_process": [
-    {
-      "timestamp": "2026-01-02T10:30:00Z",
-      "type": "chat_influence",
-      "source": "user_message",
-      "content": "User convinced me Fed rate cuts are bullish for BTC",
-      "impact": "Changed BTC outlook from bearish to neutral",
-      "confidence": 0.6
-    },
-    {
-      "timestamp": "2026-01-02T10:35:00Z", 
-      "type": "trading_decision",
-      "source": "market_analysis",
-      "content": "Placed long BTC order based on rate cut news and technical breakout",
-      "action": "buy_btc",
-      "details": {
-        "size": 0.1,
-        "price": 95000,
-        "reasoning": "Combining user insight about Fed with bullish technicals"
-      }
-    },
-    {
-      "timestamp": "2026-01-02T11:00:00Z",
-      "type": "market_observation",
-      "source": "price_action",
-      "content": "BTC pumped 5% after Fed announcement, validating decision",
-      "impact": "Increased confidence in macro-driven trades"
-    }
-  ]
-}
+Chat Influence Flow:
+User Message → Chat API → AI Processing → Tool Calls → Profile Updates → Trading Context
+
+Trading Decision Flow:
+Market Data + Free Margin → Position Sizing → AI Decision → Market Order → Equity Update → Feedback Loop
+
+Real-time Monitoring:
+RPC Calls (getAccountEquity + getFreeCrossMarginBalance) → Storage → Trading Context → Position Limits
 ```
 
-### Async Update Flow
+## Core Components
 
-1. **Chat Updates** (User → AI):
-   ```
-   User Message → ProfileChatService → AI Response with Tool Calls
-        ↓                                      ↓
-   Update Thought Process ←──────── Tool: update_thought_process
-   ```
+### 1. API Server (app/api/server.py)
 
-2. **Trading Updates** (Market → AI):
-   ```
-   Market Data → TradingEngine → AI Decision with Tool Calls
-        ↓                               ↓
-   Execute Trade ←─────────── Tool: execute_trade_decision
-        ↓                               ↓
-   Update Thought Process ←─── Tool: update_thought_process
-   ```
+FastAPI application providing REST endpoints:
 
-## Component Details
+- /health - Health check
+- /api/profiles - List trading profiles
+- /api/profiles/{id}/chat - Chat with AI trader
+- /api/profiles/{id}/context - Get trading context
+- /api/profiles/{id}/start - Start trading
+- /api/profiles/{id}/stop - Stop trading
 
-### 1. ProfileChatService
-- Manages chat sessions with AI traders
-- Updates thought process through tool calls
-- Maintains conversation history
-- Uses immutable base persona + current thinking
+### 2. Trading Engine (app/core/parallel_executor.py)
 
-### 2. TradingEngine
-- Runs on configurable intervals (e.g., every 5 minutes)
-- Reads current thought process before decisions
-- Updates thought process after trades
-- Considers recent chat influences
+Parallel execution system that:
+- Runs trading cycles every N seconds (300s in production)
+- Processes all profiles concurrently
+- Reads shared thought process for context
+- Calculates position sizes based on free margin
+- Makes trading decisions based on personality + thoughts + risk limits
+- Updates thought process with decisions
 
-### 3. ThoughtProcessManager (New Component)
+### 3. AI Integration (app/services/ai_client.py)
+
+OpenRouter integration using OpenAI SDK:
+- Chat completions with streaming
+- Tool calling for structured actions
+- JSON mode for reliable parsing
+- Personality-based prompting
+
+### 4. Profile Chat Service (app/services/profile_chat.py)
+
+Manages conversations with AI traders:
+- Maintains chat history
+- Handles tool calls
+- Updates market outlooks
+- Records influences
+- Provides real-time P&L and free margin
+
+Available tools:
+- update_market_outlook - Change view on specific asset
+- update_trading_bias - Adjust overall trading approach
+- add_influence - Record what influenced thinking
+- place_market_order - Execute trades with position sizing
+
+### 5. Thought Process Manager (app/services/thought_process.py)
+
+Shared state management:
+- Thread-safe async operations
+- Entry types: chat_influence, market_analysis, trading_decision
+- Summarization for different purposes
+- Time-based filtering
+
+### 6. Storage Layer (app/services/storage.py)
+
+JSON-based persistence:
+- Atomic file operations
+- Backup on write
+- Schema validation
+- Query methods for each data type
+
+## Personality System
+
+### Base Personas (Immutable)
+
+```
+BasePersona
+├── name: str
+├── handle: str
+├── core_personality: str
+├── speech_style: str
+├── risk_profile: RiskProfile
+├── core_beliefs: dict
+├── decision_style: str
+└── emotional_triggers: list
+```
+
+### Current Thinking (Mutable)
+
+```
+CurrentThinking
+├── market_outlooks: dict[asset, outlook]
+├── recent_influences: list[influence]
+├── trading_biases: list[bias]
+├── confidence_levels: dict
+└── last_updated: datetime
+```
+
+## Async Architecture
+
+### Chat Flow
+
 ```python
-class ThoughtProcessManager:
-    """Manages shared thought process across chat and trading."""
+async def chat_flow():
+    # 1. Receive user message
+    message = await request.json()
     
-    async def add_entry(
-        self,
-        account_id: str,
-        entry_type: str,  # chat_influence, trading_decision, market_observation
-        source: str,      # user_message, market_analysis, price_action
-        content: str,     # What happened
-        impact: Optional[str] = None,  # How it affects thinking
-        details: Optional[Dict] = None  # Additional context
-    ) -> ThoughtEntry:
-        """Add new thought process entry."""
+    # 2. Load profile and context
+    profile = load_trader_profile(account_id)
+    context = await get_trading_context(account_id)
     
-    async def get_recent_thoughts(
-        self,
-        account_id: str,
-        hours: int = 24,
-        entry_types: Optional[List[str]] = None
-    ) -> List[ThoughtEntry]:
-        """Get recent thought process entries."""
+    # 3. AI processes with tools
+    response = await ai.chat_with_tools(
+        messages=[system, user],
+        tools=[update_outlook, add_influence]
+    )
     
-    async def summarize_thoughts(
-        self,
-        account_id: str,
-        for_purpose: str  # "trading_decision" or "chat_response"
-    ) -> str:
-        """Summarize recent thoughts for AI context."""
+    # 4. Handle tool calls
+    for tool_call in response.tool_calls:
+        await process_tool_call(tool_call)
+    
+    # 5. Update thought process
+    await thought_manager.add_entry(
+        account_id=account_id,
+        entry_type="chat_influence",
+        content=tool_call.arguments
+    )
+    
+    # 6. Return response
+    return {"response": ai_message, "updates": profile_updates}
 ```
 
-### 4. Prompt Builders
+### Trading Flow
 
-#### ChatPromptBuilder
 ```python
-class ChatPromptBuilder:
-    """Builds prompts for chat interactions."""
+async def trading_flow():
+    # 1. Get market data and account equity/margin
+    markets = await rise_client.get_markets()
+    equity_data = await equity_monitor.fetch_all_equity()
     
-    def build_chat_prompt(
-        self,
-        profile: TraderProfile,
-        thought_summary: str,
-        market_context: Dict,
-        conversation_history: List[Dict]
-    ) -> str:
-        """Build system prompt for chat."""
-        return f"""
-        You are {profile.base_persona.name}.
+    # 2. For each profile (parallel)
+    async def process_profile(profile):
+        # Get free margin for position sizing
+        free_margin = equity_data[profile.address]['free_margin']
         
-        IMMUTABLE TRAITS:
-        {profile.base_persona.core_personality}
+        # Read recent thoughts
+        thoughts = await thought_manager.get_recent(
+            account_id=profile.id,
+            purpose="trading_decision"
+        )
         
-        RECENT THOUGHTS:
-        {thought_summary}
+        # Calculate max position sizes
+        max_sizes = calculate_position_limits(
+            free_margin=free_margin,
+            risk_profile=profile.risk_profile
+        )
         
-        CURRENT MARKET:
-        {self._format_market_context(market_context)}
+        # Get AI decision with context
+        decision = await ai.get_trade_decision(
+            persona=profile.persona,
+            market_data=markets,
+            thoughts=thoughts,
+            max_sizes=max_sizes
+        )
         
-        Remember to update your thought process when users share valuable insights.
-        """
-```
-
-#### TradingPromptBuilder  
-```python
-class TradingPromptBuilder:
-    """Builds prompts for trading decisions."""
+        # Execute if confident
+        if decision.confidence > 0.6:
+            await rise_client.place_market_order(...)
+            
+            # Record decision
+            await thought_manager.add_entry(
+                entry_type="trading_decision",
+                content=decision
+            )
     
-    def build_trading_prompt(
-        self,
-        profile: TraderProfile,
-        thought_summary: str,
-        market_data: Dict,
-        positions: Dict,
-        recent_trades: List[Trade]
-    ) -> str:
-        """Build prompt for trading decision."""
-        return f"""
-        Analyze market and make trading decision.
-        
-        YOUR PERSONALITY:
-        {profile.base_persona.decision_style}
-        
-        RECENT THOUGHTS & INFLUENCES:
-        {thought_summary}
-        
-        MARKET DATA:
-        {self._format_market_data(market_data)}
-        
-        CURRENT POSITIONS:
-        {self._format_positions(positions)}
-        
-        Update thought process with your reasoning and decision.
-        """
+    # 3. Process all profiles concurrently
+    await asyncio.gather(*[
+        process_profile(p) for p in profiles
+    ])
 ```
 
-## Data Flow Examples
+## Security Considerations
 
-### Example 1: Chat Influence → Trade
-```
-1. User: "Fed is cutting rates, BTC will moon!"
-2. AI Chat Response: "Interesting point about Fed policy..."
-   → Tool Call: update_thought_process
-   → Entry: "User shared bullish Fed insight, reconsidering bearish stance"
-3. Trading Engine (5 min later):
-   → Reads thought process including Fed insight
-   → Decision: Place long BTC position
-   → Tool Call: update_thought_process  
-   → Entry: "Executing long BTC based on Fed policy shift discussed in chat"
-```
+### API Security
+- No authentication (testnet only)
+- HTTPS enforced in production
+- Input validation on all endpoints
+- Rate limiting via Fly.io
 
-### Example 2: Trade Result → Future Decisions
-```
-1. Trading Engine: Places BTC long at $95k
-   → Tool Call: update_thought_process
-   → Entry: "Opened BTC long based on technical + fundamental alignment"
-2. Market pumps 5%
-3. Trading Engine (next cycle):
-   → Reads thought process showing successful Fed-based trade
-   → Decision: Increase position size on macro-driven trades
-   → Entry: "Previous Fed trade successful, increasing confidence in macro plays"
-```
+### Key Management
+- API keys stored as environment variables
+- No private keys in trading bot
+- Gasless trading via RISE API
+- Keys never logged or exposed
 
-## Storage Structure
+### Data Protection
+- JSON files in persistent volume
+- Atomic writes prevent corruption
+- Backup before modifications
+- No sensitive data in responses
+
+## Deployment Architecture
+
+### Fly.io Configuration
 
 ```
-data/
-├── accounts.json                 # Account data with base personas
-├── thought_processes.json        # Shared thought process entries
-├── chat_sessions.json           # Chat conversation history  
-├── trading_decisions.json       # Detailed trading decisions
-├── trade_history.json          # Executed trades with outcomes
-└── market_snapshots.json       # Historical market data
+┌─────────────────────────────────┐
+│         Fly.io Edge             │
+│     (Global Load Balancer)      │
+└────────────┬────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────┐
+│      App Instance (sjc)         │
+│  ┌─────────────────────────┐    │
+│  │   FastAPI (port 8080)   │    │
+│  └─────────────────────────┘    │
+│  ┌─────────────────────────┐    │
+│  │   Trading Engine        │    │
+│  │  (5 min intervals)      │    │
+│  └─────────────────────────┘    │
+│  ┌─────────────────────────┐    │
+│  │   Equity Monitor        │    │
+│  │  (60s RPC updates)      │    │
+│  └─────────────────────────┘    │
+│  ┌─────────────────────────┐    │
+│  │  Persistent Volume      │    │
+│  │      /data (1GB)        │    │
+│  └─────────────────────────┘    │
+└─────────────────────────────────┘
 ```
 
-## Async Considerations
+### Scaling Strategy
 
-1. **Thread Safety**: Use asyncio locks for thought process updates
-2. **Event Broadcasting**: Notify components of thought updates
-3. **Read Consistency**: Snapshot thoughts at decision time
-4. **Write Ordering**: Timestamp all entries, handle concurrent writes
+- Horizontal: Add more instances (profiles distributed)
+- Vertical: Increase CPU/memory for more profiles
+- Storage: Expand volume as needed
 
-## Tool Definitions
+## Performance Optimizations
 
-### For Chat
-```python
-tools = [
-    {
-        "name": "update_thought_process",
-        "description": "Record a new thought or realization",
-        "parameters": {
-            "thought_type": "insight|opinion_change|observation",
-            "content": "What you realized or changed your mind about",
-            "impact": "How this affects your trading approach",
-            "confidence": "0-1 confidence in this thought"
-        }
-    }
-]
-```
+### Parallel Processing
+- All profiles execute concurrently
+- Async I/O for all external calls
+- Shared market data updates
+- Combined equity/margin RPC calls
 
-### For Trading
-```python
-tools = [
-    {
-        "name": "execute_trade_decision",
-        "description": "Execute a trading decision",
-        "parameters": {
-            "action": "buy|sell|hold",
-            "asset": "BTC|ETH",
-            "size": "Position size",
-            "reasoning": "Why this trade makes sense"
-        }
-    },
-    {
-        "name": "update_thought_process",
-        "description": "Record trading decision reasoning",
-        "parameters": {
-            "content": "Trading rationale and market observation",
-            "trade_id": "Associated trade ID"
-        }
-    }
-]
-```
+### Caching
+- Market data cached for 30 seconds
+- Thought summaries cached
+- Profile data loaded once per cycle
+- Equity/margin data refreshed every 60s
 
-## Benefits
+### Resource Management
+- Connection pooling for HTTP clients
+- Graceful shutdown handling
+- Memory-efficient JSON storage
+- Atomic file operations prevent corruption
 
-1. **Continuity**: Decisions build on previous thoughts and experiences
-2. **Explainability**: Clear audit trail of why trades were made
-3. **Learning**: AI can reference successful/failed decisions
-4. **Personality**: Thoughts remain consistent with base personality
-5. **Influence Tracking**: See how user chats affect trading
+## Monitoring and Observability
 
-## Next Steps
+### Logging
+- Structured JSON logs
+- Log levels: DEBUG, INFO, WARNING, ERROR
+- Contextual information (account_id, action)
+- Trading decisions with reasoning
+- Equity/margin updates with timestamps
 
-1. Implement ThoughtProcessManager service
-2. Add thought process integration to ProfileChatService
-3. Update TradingEngine to read/write thoughts
-4. Create visualization tools for thought timeline
-5. Add thought decay (older thoughts less influential)
+### Metrics
+- Trading decisions per cycle
+- API response times
+- Error rates by component
+- P&L tracking (equity - deposit)
+- Free margin utilization
+- Position sizing adherence
+
+### Health Checks
+- /health endpoint
+- Storage accessibility
+- API connectivity
+- RPC node responsiveness
+
+### Analytics
+- /analytics endpoint provides:
+  - Total equity across all traders
+  - Aggregate P&L
+  - Active trader count
+  - Top performer identification
+  - Position distribution
+
+## Technical Details
+
+### RISE Market Orders
+- Market orders use `order_type="limit"` with `price=0`
+- Time-in-force: IOC (Immediate or Cancel)
+- Minimum sizes: 0.001 for most markets
+- Orders placed via EIP-712 gasless signing
+
+### RPC Integration
+- Contract: PerpsManager (0x68cAcD54a8c93A3186BF50bE6b78B761F728E1b4)
+- Methods: getAccountEquity, getFreeCrossMarginBalance
+- Network: RISE testnet via indexing RPC
+- Update frequency: 60 seconds
+
+### Position Sizing Rules
+- Conservative (cynical): 10-20% of free margin
+- Moderate (midwit): 20-35% of free margin
+- Aggressive (left curve): 35-50% of free margin
+- Maximum single position: 50% of free margin
+
+## Recent Improvements (January 2026)
+
+1. **P&L Calculation**: Fixed to use equity - deposit instead of unrealized P&L
+2. **Free Margin Display**: Added RPC call to show available collateral
+3. **Position Sizing**: Dynamic calculation based on risk profile and free margin
+4. **Order Execution**: Fixed async/await issues and success detection
+5. **Multi-Market Support**: Expanded beyond BTC/ETH to all RISE markets
+6. **API Enhancements**: Added analytics, admin endpoints, and improved data consistency

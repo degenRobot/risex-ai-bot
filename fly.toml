@@ -14,8 +14,8 @@ kill_timeout = 30
   PORT = "8080"
   PYTHONPATH = "/app"
   DATA_DIR = "/data"
-  TRADING_MODE = "dry"
-  TRADING_INTERVAL = "60"
+  TRADING_MODE = "live"
+  TRADING_INTERVAL = "300"
 
 [http_service]
   internal_port = 8080

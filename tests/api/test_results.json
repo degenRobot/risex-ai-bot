@@ -1,0 +1,85 @@
+{
+  "timestamp": "2026-01-02T14:56:38.295214",
+  "base_url": "https://risex-trading-bot.fly.dev",
+  "tests": {
+    "health_check": {
+      "status": "\u2705 PASSED",
+      "response": {
+        "status": "healthy",
+        "accounts": 15,
+        "storage": "connected"
+      }
+    },
+    "list_profiles": {
+      "status": "\u2705 PASSED",
+      "profile_count": 14,
+      "sample": {
+        "handle": "btc_hodler",
+        "name": "Steady Bitcoin Stacker",
+        "trading_style": "conservative",
+        "is_trading": true,
+        "total_pnl": 0.0,
+        "position_count": 0,
+        "pending_actions": 0
+      }
+    },
+    "get_profile_by_handle": {
+      "status": "\u2705 PASSED",
+      "profile": {
+        "handle": "crypto_degen",
+        "name": "The Crypto Degen",
+        "trading_style": "aggressive"
+      }
+    },
+    "chat_bullish": {
+      "status": "\u2705 PASSED",
+      "response_preview": "*eyes go wide like saucers* OMGGG SENPAI!! BTC BREAKIN 100K TODAY?? *jumps up n down bouncin smol bo...",
+      "updates": [
+        "Recorded influence: Flipped me to mega bullish FOMO, gotta ape long immediately!",
+        "Updated BTC outlook to Bullish: User says BTC breaking 100k today, time to go long - rumor got me hyped af, previous bearish forgotten!"
+      ],
+      "session_id": "ee1346d4-eb45-425f-8472-d819fad311b8"
+    },
+    "chat_bearish": {
+      "status": "\u2705 PASSED",
+      "response_preview": "*eyes widen in panic, flailing tiny arms* OMO fren!! market crash incoming?? BTC to 50k baka?? *hype...",
+      "updates": [
+        "Recorded influence: Super persuaded now, flipping to mega bearish on BTC, panic short vibes only!",
+        "Updated BTC outlook to Bearish: User rumor of market crash and BTC to 50k got me hyped to short, forgetting old bullish, degen FOMO activated!"
+      ]
+    },
+    "profile_summary": {
+      "status": "\u2705 PASSED",
+      "has_thinking": false,
+      "has_persona": false
+    },
+    "profile_context": {
+      "status": "\u2705 PASSED",
+      "profile_name": "The Crypto Degen",
+      "context": {
+        "current_pnl": 0,
+        "open_positions": 0,
+        "available_balance": 0,
+        "positions": [],
+        "recent_trades": []
+      }
+    },
+    "admin_list_profiles": {
+      "status": "\u274c FAILED",
+      "error": ""
+    },
+    "admin_get_balance": {
+      "status": "\u26a0\ufe0f  WARNING",
+      "reason": "Account not whitelisted on RISE",
+      "status_code": 401
+    },
+    "error_404": {
+      "status": "\u2705 PASSED",
+      "message": "Correctly returns 404 for invalid profile"
+    },
+    "error_401": {
+      "status": "\u2705 PASSED",
+      "message": "Correctly returns 401 for invalid API key"
+    }
+  }
+}

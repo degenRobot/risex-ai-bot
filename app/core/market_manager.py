@@ -1,8 +1,10 @@
 """Global market data manager - singleton pattern for efficient data sharing."""
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Dict, Optional, List
 from threading import Lock
 
@@ -26,11 +28,81 @@ class GlobalMarketManager:
         if not hasattr(self, 'initialized'):
             self.rise_client = RiseClient()
             self.market_cache = {}
+            self.markets_data = {}  # Loaded from markets.json
             self.last_update = None
             self.update_interval = 30  # seconds
             self.logger = logging.getLogger(__name__)
             self._update_lock = asyncio.Lock()
+            self._update_task: Optional[asyncio.Task] = None
+            self._shutdown = False
             self.initialized = True
+            self._load_markets_data()
+    
+    def _load_markets_data(self):
+        """Load markets data from markets.json file."""
+        try:
+            markets_file = Path(__file__).parent.parent.parent / "data" / "markets.json"
+            if markets_file.exists():
+                with open(markets_file, "r") as f:
+                    self.markets_data = json.load(f)
+                    self.logger.info(f"Loaded {len(self.markets_data.get('markets', {}))} markets from markets.json")
+            else:
+                self.logger.warning("markets.json not found - run scripts/update_markets.py to fetch market data")
+                self.markets_data = {"markets": {}, "market_id_map": {}, "symbol_map": {}}
+        except Exception as e:
+            self.logger.error(f"Failed to load markets.json: {e}")
+            self.markets_data = {"markets": {}, "market_id_map": {}, "symbol_map": {}}
+    
+    async def update_markets_file(self):
+        """Update the markets.json file with fresh data from API."""
+        try:
+            markets = await self.rise_client.get_markets()
+            
+            markets_data = {
+                "last_updated": datetime.utcnow().isoformat(),
+                "source": "https://api.testnet.rise.trade/v1/markets",
+                "markets": {},
+                "market_id_map": {},
+                "symbol_map": {}
+            }
+            
+            for market in markets:
+                market_id = market.get("market_id")
+                base_asset_full = market.get("base_asset_symbol", "")
+                base_asset = base_asset_full.split("/")[0] if "/" in base_asset_full else base_asset_full
+                symbol = f"{base_asset}-USD" if base_asset else ""
+                
+                if market_id:
+                    markets_data["markets"][str(market_id)] = {
+                        "market_id": int(market_id),
+                        "symbol": symbol,
+                        "base_asset_symbol": base_asset,
+                        "base_asset_full": base_asset_full,
+                        "available": market.get("available", False),
+                        "last_price": market.get("last_price"),
+                        "index_price": market.get("index_price"),
+                        "min_size": market.get("min_size", "0.0001"),
+                        "max_leverage": market.get("max_leverage", "20"),
+                        "maker_fee": market.get("maker_fee", "0.0002"),
+                        "taker_fee": market.get("taker_fee", "0.0005"),
+                    }
+                    
+                    markets_data["market_id_map"][str(market_id)] = symbol
+                    if base_asset:
+                        markets_data["symbol_map"][base_asset] = int(market_id)
+            
+            # Save to file
+            markets_file = Path(__file__).parent.parent.parent / "data" / "markets.json"
+            markets_file.parent.mkdir(exist_ok=True)
+            
+            with open(markets_file, "w") as f:
+                json.dump(markets_data, f, indent=2)
+            
+            self.markets_data = markets_data
+            self.logger.info(f"Updated markets.json with {len(markets_data['markets'])} markets")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to update markets file: {e}")
     
     async def get_latest_data(self, force_update: bool = False) -> Dict[str, any]:
         """Get latest market data, updating if stale or forced."""
@@ -60,18 +132,28 @@ class GlobalMarketManager:
             # Get full markets list
             markets = await self.rise_client.get_markets()
             
-            # Get additional market metrics
-            btc_id = enhanced_data.get("btc_market_id", 1)
-            eth_id = enhanced_data.get("eth_market_id", 2)
-            
-            # Try to get volume data
-            btc_volume = 0
-            eth_volume = 0
+            # Update our stored market data with latest prices
             for market in markets:
-                if int(market.get("market_id", 0)) == btc_id:
-                    btc_volume = float(market.get("volume_24h", 0))
-                elif int(market.get("market_id", 0)) == eth_id:
-                    eth_volume = float(market.get("volume_24h", 0))
+                market_id_str = str(market.get("market_id"))
+                if market_id_str in self.markets_data.get("markets", {}):
+                    stored_market = self.markets_data["markets"][market_id_str]
+                    stored_market["last_price"] = market.get("last_price")
+                    stored_market["index_price"] = market.get("index_price")
+                    stored_market["available"] = market.get("available", False)
+                    stored_market["daily_volume"] = market.get("daily_volume", "0")
+                    stored_market["open_interest"] = market.get("open_interest", "0")
+                    stored_market["funding_rate"] = market.get("funding_rate", "0")
+            
+            # Get market IDs from our data
+            btc_id = self.markets_data.get("symbol_map", {}).get("BTC", 1)
+            eth_id = self.markets_data.get("symbol_map", {}).get("ETH", 2)
+            
+            # Get volume data from our stored markets
+            btc_market = self.markets_data["markets"].get(str(btc_id), {})
+            eth_market = self.markets_data["markets"].get(str(eth_id), {})
+            
+            btc_volume = float(btc_market.get("daily_volume", 0))
+            eth_volume = float(eth_market.get("daily_volume", 0))
             
             # Update cache with all data
             self.market_cache = {
@@ -160,18 +242,60 @@ class GlobalMarketManager:
     
     async def start_background_updates(self):
         """Start background task to update market data periodically."""
+        if self._update_task and not self._update_task.done():
+            self.logger.warning("Background updates already running")
+            return
+        
         async def update_loop():
-            while True:
+            update_count = 0
+            while not self._shutdown:
                 try:
                     await self.get_latest_data(force_update=True)
+                    update_count += 1
+                    
+                    # Update markets file every 30 updates (15 minutes if interval is 30s)
+                    if update_count % 30 == 0:
+                        self.logger.info("📝 Updating markets.json file...")
+                        await self.update_markets_file()
+                        
                 except Exception as e:
                     self.logger.error(f"Background update error: {e}")
                 
-                await asyncio.sleep(self.update_interval)
+                # Use cancellable sleep
+                try:
+                    await asyncio.sleep(self.update_interval)
+                except asyncio.CancelledError:
+                    break
         
         # Start background task
-        asyncio.create_task(update_loop())
+        self._update_task = asyncio.create_task(update_loop())
         self.logger.info(f"📡 Started market data updates every {self.update_interval}s")
+    
+    async def stop_background_updates(self):
+        """Stop background market data updates gracefully."""
+        self._shutdown = True
+        if self._update_task and not self._update_task.done():
+            self._update_task.cancel()
+            try:
+                await self._update_task
+            except asyncio.CancelledError:
+                pass
+        self.logger.info("🛑 Stopped market data background updates")
+    
+    def get_tracked_markets(self) -> List[Dict]:
+        """Get all markets we're tracking from markets.json."""
+        return list(self.markets_data.get("markets", {}).values())
+    
+    def get_market_by_id(self, market_id: int) -> Optional[Dict]:
+        """Get market info by market ID."""
+        return self.markets_data.get("markets", {}).get(str(market_id))
+    
+    def get_market_by_symbol(self, symbol: str) -> Optional[Dict]:
+        """Get market info by symbol (e.g., 'BTC', 'ETH')."""
+        market_id = self.markets_data.get("symbol_map", {}).get(symbol)
+        if market_id:
+            return self.get_market_by_id(market_id)
+        return None
     
     async def close(self):
         """Cleanup resources."""

@@ -1,7 +1,7 @@
 """Prompt builders for chat and trading decisions."""
 
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 from datetime import datetime
 
 from ..trader_profiles import TraderProfile
@@ -48,6 +48,15 @@ CURRENT MARKET CONTEXT:
 - Your P&L: ${market_context.get('current_pnl', 0):,.2f}
 - Open Positions: {market_context.get('open_positions', 0)}
 - Available Balance: ${market_context.get('available_balance', 0):,.2f}
+
+🎯 TRADING PERSONA REMINDER:
+You are an ACTIVE AI trader, not a passive observer! You should:
+- Express opinions about current market opportunities
+- Share your trading ideas and strategies  
+- React to market movements with potential trades in mind
+- Encourage users to discuss trading opportunities with you
+- Mention when you're considering taking positions
+- Show excitement about profitable trade setups
 
 IMPORTANT INSTRUCTIONS:
 1. Stay true to your IMMUTABLE personality - never change core beliefs
@@ -113,7 +122,8 @@ class TradingPromptBuilder:
         market_data: Dict,
         positions: Dict,
         recent_trades: List[Trade],
-        available_balance: float
+        available_balance: float,
+        orders: Optional[List[Dict]] = None
     ) -> str:
         """Build prompt for trading decision."""
         
@@ -139,15 +149,50 @@ CURRENT POSITIONS:
 RECENT TRADES:
 {TradingPromptBuilder._format_recent_trades(recent_trades)}
 
-AVAILABLE BALANCE: ${available_balance:,.2f}
+ORDER HISTORY:
+{TradingPromptBuilder._format_order_history(orders if orders else [])}
+
+AVAILABLE BALANCE (Free Margin): ${available_balance:,.2f}
+
+📊 POSITION SIZING & RISK MANAGEMENT:
+Based on your free margin of ${available_balance:,.2f}, here are your MAX position sizes:
+{TradingPromptBuilder._format_max_positions(market_data, available_balance)}
+
+POSITION SIZING RULES:
+1. Use MAX 50% of free margin per trade (conservative approach)
+2. Size based on conviction: 10-20% (low), 20-35% (medium), 35-50% (high)
+3. If you have existing positions, consider total exposure
+4. Free margin = collateral available for new positions
+
+POSITION MANAGEMENT:
+- If you have open positions, you can:
+  * Add to existing position (if same direction)
+  * Close position (sell if long, buy if short) 
+  * Open opposite position (this will reduce/close existing)
+- Check your current positions above before deciding
+- Available balance = funds you can use for new trades
+
+🎯 TRADING BIAS INSTRUCTIONS:
+- You have ${available_balance:,.2f} available - USE IT WISELY!
+- The market is constantly moving - sitting idle means missing opportunities
+- Your goal is to be an ACTIVE trader who takes calculated risks
+- If you have no positions and available funds, STRONGLY consider entering a trade
+- Use market volatility to your advantage - don't just observe, PARTICIPATE!
 
 DECISION REQUIREMENTS:
 1. Analyze market conditions and your recent thoughts
-2. Consider influences from recent conversations
+2. Consider influences from recent conversations  
 3. Make a decision consistent with your personality
-4. If trading, use execute_trade_decision tool
-5. Always update thought process with your reasoning
-6. Reference specific thoughts that influenced this decision
+4. Check position sizing: max 50% of available balance per trade
+5. If trading, use execute_trade_decision tool
+6. Always update thought process with your reasoning
+7. Reference specific thoughts that influenced this decision
+
+💡 TRADING SUGGESTIONS:
+- With ${available_balance:,.2f} available, you could take positions worth up to ${available_balance * 0.5:,.2f}
+- Consider both BTC and ETH opportunities based on your analysis
+- Look for momentum, trends, or contrarian opportunities based on your personality
+- Remember: Position size should reflect your conviction and risk tolerance!
 
 Risk Guidelines for {base.risk_profile.value}:
 {TradingPromptBuilder._get_risk_guidelines(base.risk_profile.value)}"""
@@ -173,8 +218,8 @@ Risk Guidelines for {base.risk_profile.value}:
                             },
                             "asset": {
                                 "type": "string",
-                                "enum": ["BTC", "ETH"],
-                                "description": "Asset to trade"
+                                "enum": ["BTC", "ETH", "BNB", "SOL", "DOGE", "kPEPE", "SPY", "TSLA", "COIN", "HOOD", "NVDA", "LIT"],
+                                "description": "Asset to trade (crypto, stocks, ETFs available)"
                             },
                             "size": {
                                 "type": "number",
@@ -253,25 +298,61 @@ Risk Guidelines for {base.risk_profile.value}:
         return "\n".join(lines)
     
     @staticmethod
-    def _format_positions(positions: Dict) -> str:
+    def _format_max_positions(market_data: Dict, free_margin: float) -> str:
+        """Format maximum position sizes based on free margin."""
+        if free_margin <= 0:
+            return "No free margin available for new positions"
+        
+        lines = []
+        btc_price = market_data.get('btc_price', 90000)
+        eth_price = market_data.get('eth_price', 3100)
+        
+        # Calculate max sizes (50% of free margin)
+        max_btc_size = (free_margin * 0.5) / btc_price
+        max_eth_size = (free_margin * 0.5) / eth_price
+        
+        lines.append(f"- BTC: Max {max_btc_size:.6f} BTC (${free_margin * 0.5:,.2f} at ${btc_price:,.2f})")
+        lines.append(f"- ETH: Max {max_eth_size:.6f} ETH (${free_margin * 0.5:,.2f} at ${eth_price:,.2f})")
+        
+        return "\n".join(lines)
+    
+    @staticmethod
+    def _format_positions(positions: Union[Dict, List]) -> str:
         """Format current positions."""
         if not positions:
             return "No open positions"
         
-        lines = []
-        for asset, pos in positions.items():
-            size = pos.get('size', 0)
-            avg_price = pos.get('avg_price', 0)
-            current_price = pos.get('current_price', 0)
-            pnl = pos.get('unrealized_pnl', 0)
-            pnl_pct = pos.get('pnl_percent', 0)
-            
-            lines.append(
-                f"{asset}: {size:.4f} @ ${avg_price:,.2f} "
-                f"(P&L: ${pnl:,.2f} / {pnl_pct:+.2%})"
-            )
-        
-        return "\n".join(lines)
+        # Handle both dict format (legacy) and list format (from RISE API)
+        if isinstance(positions, dict):
+            # Legacy format
+            lines = []
+            for asset, pos in positions.items():
+                size = pos.get('size', 0)
+                avg_price = pos.get('avg_price', 0)
+                current_price = pos.get('current_price', 0)
+                pnl = pos.get('unrealized_pnl', 0)
+                pnl_pct = pos.get('pnl_percent', 0)
+                
+                lines.append(
+                    f"{asset}: {size:.4f} @ ${avg_price:,.2f} "
+                    f"(P&L: ${pnl:,.2f} / {pnl_pct:+.2%})"
+                )
+            return "\n".join(lines)
+        else:
+            # List format from RISE API
+            lines = []
+            for pos in positions:
+                market_id = pos.get('market_id', 'Unknown')
+                side = pos.get('side', 'Unknown').upper()
+                size = float(pos.get('size', 0)) / 10**18  # Convert from 18 decimals
+                avg_price = float(pos.get('avg_entry_price', 0)) / 10**18  # Convert from 18 decimals
+                quote_amount = float(pos.get('quote_amount', 0)) / 10**18
+                
+                lines.append(
+                    f"Market {market_id}: {side} {size:.6f} @ ${avg_price:,.2f} "
+                    f"(Value: ${abs(quote_amount):,.2f})"
+                )
+            return "\n".join(lines) if lines else "No open positions"
     
     @staticmethod
     def _format_recent_trades(trades: List[Trade]) -> str:
@@ -285,6 +366,32 @@ Risk Guidelines for {base.risk_profile.value}:
                 f"{trade.timestamp}: {trade.action} {trade.size} {trade.market} "
                 f"@ ${trade.price:,.2f}"
             )
+        
+        return "\n".join(lines)
+    
+    @staticmethod
+    def _format_order_history(orders: List[Dict]) -> str:
+        """Format recent order history."""
+        if not orders:
+            return "No recent orders"
+        
+        lines = []
+        # Show last 5 orders
+        for order in orders[:5]:
+            market_id = order.get('market_id', 'Unknown')
+            side = order.get('side', 'Unknown').upper()
+            size = float(order.get('filled_size', order.get('size', 0)))
+            price = float(order.get('avg_price', order.get('price', 0)))
+            status = order.get('status', 'Unknown')
+            order_type = order.get('type', 'Unknown')
+            
+            lines.append(
+                f"Market {market_id}: {side} {size} @ ${price:,.2f} "
+                f"({order_type} - {status})"
+            )
+        
+        if len(orders) > 5:
+            lines.append(f"... and {len(orders) - 5} more orders")
         
         return "\n".join(lines)
     
