@@ -77,7 +77,7 @@ else\n\
 fi\n\
 \n\
 # Start the application\n\
-exec python start.py' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+exec python start_bot.py' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 # Run the application
 CMD ["/app/entrypoint.sh"]

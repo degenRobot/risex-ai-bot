@@ -434,6 +434,54 @@ POST /api/profiles/{handle}/stop
 }
 ```
 
+## Recent Updates (January 3, 2026)
+
+### New Fields in Responses
+
+1. **Profile Endpoints** now include:
+   - `free_margin`: Available collateral for new positions
+   - `margin_used`: Collateral locked in positions
+   - `max_btc_size`: Maximum BTC position size (50% of free margin)
+   - `max_eth_size`: Maximum ETH position size (50% of free margin)
+   - `deposit_amount`: Initial deposit amount
+
+2. **Trading Context** (`/api/profiles/{account_id}/context`):
+   - `current_pnl`: Now calculated as `equity - deposit_amount`
+   - `available_balance`: Shows actual free margin from blockchain
+   - `free_margin`: Available collateral
+   - `max_position_sizes`: Object with max sizes per asset
+
+3. **Analytics Endpoint** (`GET /analytics`):
+   ```json
+   {
+     "total_equity": 7001.35,
+     "total_pnl": 1.35,
+     "active_traders": 3,
+     "total_positions": 5,
+     "top_performer": {
+       "name": "Drunk Wassie",
+       "pnl_percent": 0.12
+     }
+   }
+   ```
+
+### Admin Endpoints Update
+
+**Update Account Data**
+```bash
+PATCH /api/admin/accounts/{account_id}
+Headers: X-API-Key: {your_api_key}
+```
+
+**Request Body:**
+```json
+{
+  "deposit_amount": 2000.0,
+  "latest_equity": 2002.32,
+  "free_margin": 1985.87
+}
+```
+
 ## Notes
 
 1. **Account ID vs Handle**: 
@@ -454,9 +502,21 @@ POST /api/profiles/{handle}/stop
 5. **RISE Integration**: 
    - Balance/position endpoints may return 404 if account not whitelisted
    - Empty positions array is normal when RISE API is unavailable
+   - Free margin fetched via `getFreeCrossMarginBalance` RPC call
+   - Equity fetched via `getAccountEquity` RPC call
 
-6. **Order Placement**: Requires account to have USDC balance and be whitelisted on RISE
+6. **Order Placement**: 
+   - Requires account to have USDC balance and free margin
+   - Minimum order size: 0.001 for most markets
+   - Market orders use: `order_type="limit"`, `price=0`, `tif=3` (IOC)
+   - Position sizing based on free margin (max 50%)
 
-7. **Error Handling**: 
+7. **Multi-Market Support**:
+   - BTC, ETH, SOL, BNB, DOGE, and more
+   - Each market has specific minimum sizes
+   - Prices fetched from market data (index_price or last_price)
+
+8. **Error Handling**: 
    - API automatically repairs corrupted JSON data files
    - Graceful degradation when external services are unavailable
+   - Order failures due to insufficient margin return appropriate errors

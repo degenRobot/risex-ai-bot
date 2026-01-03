@@ -38,8 +38,11 @@ poetry install
 # Set up environment
 cp .env.example .env
 
-# Add your OpenRouter API key to .env
-echo "OPENROUTER_API_KEY=sk-or-v1-your-key-here" >> .env
+# Configure your .env file with:
+# PRIVATE_KEY=0x...              # Main account key
+# SIGNER_PRIVATE_KEY=0x...       # Different key (MUST be different)
+# OPENROUTER_API_KEY=...         # For AI features
+# BACKEND_RPC_URL=https://indexing.testnet.riselabs.xyz
 ```
 
 ### Create Your First AI Trader
@@ -62,8 +65,15 @@ This creates a fresh account with:
 ### Run Locally
 
 ```bash
+# Start both API server and trading bot
+poetry run python start_bot.py
+
+# Or run separately:
 # Start API server
 poetry run uvicorn app.api.server:app --reload
+
+# Start trading bot (in another terminal)
+poetry run python scripts/run_enhanced_bot.py --interval 60
 
 # Access API docs
 open http://localhost:8000/docs
@@ -88,17 +98,17 @@ Three base personality types with immutable core traits:
 1. **Cynical** - Extremely bearish, thinks everything goes to zero
    - Uses financial advisor speech style
    - Very hard to convince of bullish ideas
-   - Conservative risk profile
+   - Conservative risk profile (10-20% of free margin)
 
 2. **Left Curve** - Easily influenced, makes impulsive decisions
    - Uses "smol" speech style (wassie speak)
    - Gets excited by any market rumor
-   - Degen risk profile
+   - Degen risk profile (35-50% of free margin)
 
 3. **Midwit** - Overconfident technical analyst
    - Uses crypto Twitter slang
    - Overanalyzes with indicators
-   - Moderate risk profile
+   - Moderate risk profile (20-35% of free margin)
 
 ### Chat Influence System
 
@@ -123,6 +133,14 @@ Both chat and trading systems update a shared thought log that tracks:
 - User influences and their impact
 - Trading decisions and reasoning
 - Confidence levels and timeframes
+
+### Real-time Equity Monitoring
+
+On-chain RPC monitoring fetches:
+- Account equity via `getAccountEquity`
+- Free margin via `getFreeCrossMarginBalance`
+- Updates every 60 seconds in production
+- Combined fetching for efficiency
 
 ## API Endpoints
 
@@ -154,13 +172,16 @@ POST /api/profiles/{id}/chat
 
 ```bash
 # Start trading
-POST /api/profiles/{id}/start
+POST /api/profiles/{handle}/start
 
 # Stop trading
-POST /api/profiles/{id}/stop
+POST /api/profiles/{handle}/stop
 
-# Get positions
-GET /api/accounts/{address}/positions
+# Get trading context with P&L
+GET /api/profiles/{account_id}/context
+
+# Get analytics
+GET /analytics
 ```
 
 ## Architecture
@@ -173,8 +194,10 @@ app/
 ├── core/             # Trading engine and account management
 ├── services/         # AI, chat, and RISE integration
 │   ├── ai_client.py         # OpenRouter AI integration
+│   ├── equity_monitor.py    # Real-time RPC equity/margin tracking
 │   ├── profile_chat.py      # Chat service with tool calling
-│   ├── rise_client.py       # RISE API client
+│   ├── prompt_builders.py   # Dynamic trading prompts with sizing
+│   ├── rise_client.py       # RISE API client (market orders)
 │   ├── thought_process.py   # Shared thought management
 │   └── storage.py           # JSON persistence
 ├── trader_profiles.py       # Base personality definitions
@@ -185,11 +208,13 @@ app/
 
 **AI Client**: Integrates with OpenRouter for chat completions and tool calling
 
-**Profile Chat Service**: Manages conversations and personality-based responses
+**Profile Chat Service**: Manages conversations and personality-based responses with dynamic position sizing
 
 **Thought Process Manager**: Maintains shared state between chat and trading
 
-**RISE Client**: Handles all trading operations on RISE testnet
+**RISE Client**: Handles all trading operations on RISE testnet using market orders (limit orders with price=0)
+
+**Equity Monitor**: Real-time RPC calls to track account equity and free margin
 
 **Storage**: JSON-based persistence for accounts, decisions, and chat history
 
@@ -221,22 +246,27 @@ app/
 
 Environment variables (set via `fly secrets`):
 - `OPENROUTER_API_KEY` - Required for AI features
-- `TRADING_MODE` - "dry" (default) or "live"
-- `TRADING_INTERVAL` - Seconds between trades (default: 60)
+- `TRADING_MODE` - "live" (production) or "dry" (testing)
+- `TRADING_INTERVAL` - Seconds between trades (default: 300)
+- `PRIVATE_KEY` - Main account key for deployment
+- `SIGNER_PRIVATE_KEY` - Different key for gasless signing
 
 ## Testing
 
 ### Run Tests
 
 ```bash
+# Test market orders
+poetry run python tests/trading/test_rise_market_orders.py
+
 # Test chat system
-poetry run python tests/core/test_chat_with_grok.py
+poetry run python tests/chat/test_profile_chat.py
 
-# Test trading flow
-poetry run python tests/trading/test_complete_trading_flow.py
+# Test equity monitoring
+poetry run python scripts/test_equity_monitor.py
 
-# Test full system
-poetry run python tests/core/test_full_system_live.py
+# Full integration test
+poetry run python tests/core/test_automated_trading.py --continuous
 ```
 
 ### Manual Testing
@@ -289,15 +319,35 @@ fly logs --app risex-trading-bot
 
 ### Check Data Files
 
-- `accounts.json` - Trading accounts
-- `thought_processes.json` - Shared thoughts
+- `accounts.json` - Trading accounts with deposit amounts
+- `thought_processes.json` - Shared thoughts and influences
 - `chat_sessions.json` - Conversation history
-- `trading_decisions.json` - Trade history
+- `trading_decisions.json` - Trade history with reasoning
+- `equity_snapshots.json` - Historical equity and margin data
+- `markets.json` - Market data with minimum sizes
+
+## Recent Updates (January 2026)
+
+### New Features
+- ✅ Real-time P&L calculation (equity - deposit)
+- ✅ Free margin display from blockchain RPC
+- ✅ Dynamic position sizing based on risk profile
+- ✅ Multi-market support (BTC, ETH, SOL, BNB, DOGE)
+- ✅ Market orders via limit orders with price=0
+- ✅ Combined equity/margin fetching for efficiency
+
+### API Improvements
+- New analytics endpoint with top performer tracking
+- Enhanced profile context with free margin and max position sizes
+- Admin endpoint for updating account data
+- Improved error handling for insufficient margin
 
 ## Support
 
 - RISE API Docs: https://developer.rise.trade/reference/general-information
 - OpenRouter Docs: https://openrouter.ai/docs
+- API Documentation: [API.md](./API.md)
+- Architecture Guide: [ARCHITECTURE.md](./ARCHITECTURE.md)
 
 ## License
 

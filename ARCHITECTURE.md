@@ -4,7 +4,7 @@
 
 The RISE AI Trading Bot is an autonomous trading system where AI traders with unique personalities make decisions on RISE perpetuals DEX. Users can influence trading behavior through chat conversations.
 
-**Key Innovation**: Chat-driven AI personality influence system with real-time trading integration.
+**Key Innovation**: Chat-driven AI personality influence system with real-time trading integration and dynamic position sizing based on blockchain free margin.
 
 ### Component Overview
 
@@ -24,13 +24,13 @@ The RISE AI Trading Bot is an autonomous trading system where AI traders with un
                        ▼                           ▼
     ┌──────────────────────────────────┐    ┌──────────────────────────────────┐
     │        Equity Monitor            │    │         Market Manager          │
-    │   (Real-time RPC Balance)        │    │    (Live RISE API Data)        │
+    │   (RPC: equity + free margin)    │    │    (Live RISE API Data)        │
     └──────────────────────────────────┘    └──────────────────────────────────┘
                        │                           │
                        ▼                           ▼
     ┌───────────────────────────────────────────────────────────────────────┐
     │                         JSON Storage                                  │
-    │      (accounts, equity, markets, chat, thoughts, trades)             │
+    │  (accounts, equity, markets, chat, thoughts, trades, free margin)     │
     └───────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -44,10 +44,10 @@ Chat Influence Flow:
 User Message → Chat API → AI Processing → Tool Calls → Profile Updates → Trading Context
 
 Trading Decision Flow:
-Market Data → Profile Analysis → AI Decision → Order Execution → Equity Update → Feedback Loop
+Market Data + Free Margin → Position Sizing → AI Decision → Market Order → Equity Update → Feedback Loop
 
 Real-time Monitoring:
-RPC Equity Monitor ← → Market Data Updates ← → Profile State ← → Trading Decisions
+RPC Calls (getAccountEquity + getFreeCrossMarginBalance) → Storage → Trading Context → Position Limits
 ```
 
 ## Core Components
@@ -66,10 +66,11 @@ FastAPI application providing REST endpoints:
 ### 2. Trading Engine (app/core/parallel_executor.py)
 
 Parallel execution system that:
-- Runs trading cycles every N seconds
+- Runs trading cycles every N seconds (300s in production)
 - Processes all profiles concurrently
 - Reads shared thought process for context
-- Makes trading decisions based on personality + thoughts
+- Calculates position sizes based on free margin
+- Makes trading decisions based on personality + thoughts + risk limits
 - Updates thought process with decisions
 
 ### 3. AI Integration (app/services/ai_client.py)
@@ -87,11 +88,13 @@ Manages conversations with AI traders:
 - Handles tool calls
 - Updates market outlooks
 - Records influences
+- Provides real-time P&L and free margin
 
 Available tools:
 - update_market_outlook - Change view on specific asset
 - update_trading_bias - Adjust overall trading approach
 - add_influence - Record what influenced thinking
+- place_market_order - Execute trades with position sizing
 
 ### 5. Thought Process Manager (app/services/thought_process.py)
 
@@ -174,27 +177,38 @@ async def chat_flow():
 
 ```python
 async def trading_flow():
-    # 1. Get market data
+    # 1. Get market data and account equity/margin
     markets = await rise_client.get_markets()
+    equity_data = await equity_monitor.fetch_all_equity()
     
     # 2. For each profile (parallel)
     async def process_profile(profile):
+        # Get free margin for position sizing
+        free_margin = equity_data[profile.address]['free_margin']
+        
         # Read recent thoughts
         thoughts = await thought_manager.get_recent(
             account_id=profile.id,
             purpose="trading_decision"
         )
         
+        # Calculate max position sizes
+        max_sizes = calculate_position_limits(
+            free_margin=free_margin,
+            risk_profile=profile.risk_profile
+        )
+        
         # Get AI decision with context
         decision = await ai.get_trade_decision(
             persona=profile.persona,
             market_data=markets,
-            thoughts=thoughts
+            thoughts=thoughts,
+            max_sizes=max_sizes
         )
         
         # Execute if confident
         if decision.confidence > 0.6:
-            await rise_client.place_order(...)
+            await rise_client.place_market_order(...)
             
             # Record decision
             await thought_manager.add_entry(
@@ -246,6 +260,11 @@ async def trading_flow():
 │  └─────────────────────────┘    │
 │  ┌─────────────────────────┐    │
 │  │   Trading Engine        │    │
+│  │  (5 min intervals)      │    │
+│  └─────────────────────────┘    │
+│  ┌─────────────────────────┐    │
+│  │   Equity Monitor        │    │
+│  │  (60s RPC updates)      │    │
 │  └─────────────────────────┘    │
 │  ┌─────────────────────────┐    │
 │  │  Persistent Volume      │    │
@@ -266,16 +285,19 @@ async def trading_flow():
 - All profiles execute concurrently
 - Async I/O for all external calls
 - Shared market data updates
+- Combined equity/margin RPC calls
 
 ### Caching
 - Market data cached for 30 seconds
 - Thought summaries cached
 - Profile data loaded once per cycle
+- Equity/margin data refreshed every 60s
 
 ### Resource Management
 - Connection pooling for HTTP clients
 - Graceful shutdown handling
 - Memory-efficient JSON storage
+- Atomic file operations prevent corruption
 
 ## Monitoring and Observability
 
@@ -283,13 +305,56 @@ async def trading_flow():
 - Structured JSON logs
 - Log levels: DEBUG, INFO, WARNING, ERROR
 - Contextual information (account_id, action)
+- Trading decisions with reasoning
+- Equity/margin updates with timestamps
 
 ### Metrics
 - Trading decisions per cycle
 - API response times
 - Error rates by component
+- P&L tracking (equity - deposit)
+- Free margin utilization
+- Position sizing adherence
 
 ### Health Checks
 - /health endpoint
 - Storage accessibility
 - API connectivity
+- RPC node responsiveness
+
+### Analytics
+- /analytics endpoint provides:
+  - Total equity across all traders
+  - Aggregate P&L
+  - Active trader count
+  - Top performer identification
+  - Position distribution
+
+## Technical Details
+
+### RISE Market Orders
+- Market orders use `order_type="limit"` with `price=0`
+- Time-in-force: IOC (Immediate or Cancel)
+- Minimum sizes: 0.001 for most markets
+- Orders placed via EIP-712 gasless signing
+
+### RPC Integration
+- Contract: PerpsManager (0x68cAcD54a8c93A3186BF50bE6b78B761F728E1b4)
+- Methods: getAccountEquity, getFreeCrossMarginBalance
+- Network: RISE testnet via indexing RPC
+- Update frequency: 60 seconds
+
+### Position Sizing Rules
+- Conservative (cynical): 10-20% of free margin
+- Moderate (midwit): 20-35% of free margin
+- Aggressive (left curve): 35-50% of free margin
+- Maximum single position: 50% of free margin
+
+## Recent Improvements (January 2026)
+
+1. **P&L Calculation**: Fixed to use equity - deposit instead of unrealized P&L
+2. **Free Margin Display**: Added RPC call to show available collateral
+3. **Position Sizing**: Dynamic calculation based on risk profile and free margin
+4. **Order Execution**: Fixed async/await issues and success detection
+5. **Multi-Market Support**: Expanded beyond BTC/ETH to all RISE markets
+6. **API Enhancements**: Added analytics, admin endpoints, and improved data consistency
