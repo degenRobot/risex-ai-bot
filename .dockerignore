@@ -88,6 +88,9 @@ test_*.json
 test_chat.json
 test_tool_calling.py
 
+# Archive folder
+archive/
+
 # Documentation (except key files)
 *.md
 !README.md

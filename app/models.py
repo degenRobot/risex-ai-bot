@@ -26,6 +26,15 @@ class Persona(BaseModel):
     favorite_assets: list[str]
     personality_traits: list[str]
     sample_posts: list[str]
+    
+    # New fields for enhanced prompt generation
+    personality_type: Optional[str] = None  # "leftCurve", "midCurve", etc.
+    extended_bio: Optional[str] = None  # Rich backstory for prompts
+    speech_patterns: Optional[dict] = None  # Style, vocabulary, response patterns
+    core_beliefs: Optional[dict] = None  # Trading philosophy and worldview
+    market_biases: Optional[list[str]] = None  # Market predispositions
+    interaction_style: Optional[dict] = None  # Chat behavior configuration
+    
     created_at: datetime = datetime.now()
 
 

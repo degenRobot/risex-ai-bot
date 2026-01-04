@@ -62,9 +62,21 @@ fly secrets set \
     DATA_DIR="/data" \
     --app risex-trading-bot
 
+# Check if we want to reset personas
+if [ "$1" = "--reset-personas" ]; then
+    echo "Setting RESET_PERSONAS flag for deployment..."
+    fly secrets set RESET_PERSONAS="true" --app risex-trading-bot
+fi
+
 # Deploy
 echo "Deploying application..."
 fly deploy
+
+# Clear the reset flag if it was set
+if [ "$1" = "--reset-personas" ]; then
+    echo "Clearing RESET_PERSONAS flag..."
+    fly secrets unset RESET_PERSONAS --app risex-trading-bot
+fi
 
 echo ""
 echo "Deployment complete!"
@@ -72,3 +84,6 @@ echo "===================="
 echo "View logs: fly logs --app risex-trading-bot"
 echo "Open app: fly open --app risex-trading-bot"
 echo "SSH console: fly ssh console --app risex-trading-bot"
+echo ""
+echo "To check personas:"
+echo "curl https://risex-trading-bot.fly.dev/api/profiles"

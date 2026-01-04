@@ -233,8 +233,30 @@ class ProfileChatService:
     
     async def _build_system_prompt(self, profile: TraderProfile, context: dict, account_id: str) -> str:
         """Build system prompt with immutable persona and mutable current thinking."""
-        base = profile.base_persona
-        current = profile.current_thinking
+        # Get the account to access enhanced persona fields
+        account = self.storage.get_account(account_id)
+        if not account or not account.persona:
+            # Fallback to TraderProfile if account not found
+            base = profile.base_persona
+            account_dict = {
+                "name": base.name,
+                "personality_type": self._map_to_personality_type(base.speech_style),
+                "personality_traits": base.base_traits,
+                "trading_style": self._map_risk_to_trading_style(base.risk_profile.value),
+                "risk_tolerance": self._map_risk_profile_to_tolerance(base.risk_profile.value),
+                "favorite_assets": ["BTC", "ETH", "SOL"],
+            }
+        else:
+            # Use enhanced persona fields from Account
+            persona = account.persona
+            account_dict = {
+                "name": persona.name,
+                "personality_type": persona.personality_type or self._map_to_personality_type(profile.base_persona.speech_style),
+                "personality_traits": persona.personality_traits,
+                "trading_style": persona.trading_style,
+                "risk_tolerance": persona.risk_tolerance,
+                "favorite_assets": persona.favorite_assets,
+            }
         
         # Use improved system
         # Get thought summary and influences
@@ -246,16 +268,6 @@ class ProfileChatService:
         # Get recent chat history
         recent_messages = []  # await self.chat_store.load_recent(account_id, limit=10)  # Removed module
         chat_history_summary = self._format_chat_history(recent_messages)
-        
-        # Build account dict for improved loader
-        account_dict = {
-            "name": base.name,
-            "personality_type": self._map_to_personality_type(base.speech_style),
-            "personality_traits": base.base_traits,
-            "trading_style": self._map_risk_to_trading_style(base.risk_profile.value),
-            "risk_tolerance": self._map_risk_profile_to_tolerance(base.risk_profile.value),
-            "favorite_assets": ["BTC", "ETH", "SOL"],
-        }
         
         # Enhanced context with market data
         trading_context = {

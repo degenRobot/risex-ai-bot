@@ -102,7 +102,7 @@ class ChatResponse(BaseModel):
     response: str
     chatHistory: str  # Deprecated, kept for backward compatibility
     message_id: Optional[str] = None  # ID of the assistant's response
-    profileUpdates: Optional[list[dict]] = None
+    profileUpdates: Optional[list] = None  # Can be list of strings or dicts
     sessionId: Optional[str] = None
     context: Optional[dict] = None
 

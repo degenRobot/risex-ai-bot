@@ -14,7 +14,8 @@ class ImprovedPromptLoader:
     
     def __init__(self, prompts_dir: Path = None, personas_dir: Path = None):
         self.prompts_dir = prompts_dir or Path(__file__).parent / "prompts"
-        self.personas_dir = personas_dir or Path(__file__).parent / "personas"
+        # Updated to use data directory for personas
+        self.personas_dir = personas_dir or Path(__file__).parent.parent.parent / "data" / "personas" / "templates"
         self._prompt_cache = {}
         self._persona_cache = {}
     
@@ -29,6 +30,7 @@ class ImprovedPromptLoader:
             "leftCurve": "leftcurve_redacted.json",
             "midCurve": "midcurve_midwit.json",
             "rightCurve": "rightcurve_bigbrain.json",
+            "schizo": "schizo_posters.json",
             # Legacy mappings
             "midwit": "midcurve_midwit.json",
         }

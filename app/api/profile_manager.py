@@ -54,6 +54,15 @@ class PersonaUpdate(BaseModel):
     favorite_assets: Optional[list[str]] = Field(None, max_items=10)
     personality_traits: Optional[list[str]] = Field(None, max_items=20)
     
+    # New enhanced fields
+    personality_type: Optional[str] = Field(None, pattern="^(leftCurve|midCurve|rightCurve|cynical|schizo)$")
+    extended_bio: Optional[str] = Field(None, min_length=1, max_length=2000)
+    speech_patterns: Optional[dict] = None
+    core_beliefs: Optional[dict] = None
+    market_biases: Optional[list[str]] = Field(None, max_items=10)
+    interaction_style: Optional[dict] = None
+    sample_posts: Optional[list[str]] = Field(None, max_items=10)
+    
     @validator("favorite_assets")
     def validate_assets(cls, v):
         if v is not None:
@@ -114,29 +123,61 @@ async def create_profile(
     Requires API key authentication in X-API-Key header.
     """
     try:
-        # ProfileFactory removed - would need reimplementation
-        raise HTTPException(
-            status_code=501, 
-            detail="Profile creation temporarily disabled during refactoring",
+        from ..services.account_creator import AccountCreator, AccountCreationError
+        
+        # Create account using AccountCreator service
+        creator = AccountCreator()
+        account_id, account = await creator.create_profile(
+            personality_type=request.personality_type,
+            deposit_amount=request.initial_deposit,
         )
+        
+        # Update persona with additional fields from request
+        if request.personality_traits:
+            account.persona.personality_traits = request.personality_traits
+        if request.favorite_assets:
+            account.persona.favorite_assets = request.favorite_assets
+        
+        # Set personality_type on persona
+        account.persona.personality_type = request.personality_type
+        
+        # Save updated account
+        storage.save_account(account)
+        
+        # Get signer address
+        signer_address = EthAccount.from_key(account.signer_key).address
+        
+        # Fetch initial equity
+        initial_equity = None
+        try:
+            from ..services.equity_monitor import get_equity_monitor
+            equity_monitor = get_equity_monitor()
+            initial_equity = await equity_monitor.fetch_equity(account.address)
+            
+            if initial_equity:
+                account.initial_equity = initial_equity
+                account.equity_fetched_at = datetime.now()
+                storage.save_account(account)
+        except Exception as e:
+            logger.warning(f"Could not fetch initial equity: {e}")
         
         # Success message with equity info
         equity_info = ""
-        if profile_data.get("initial_equity"):
-            equity_info = f", initial equity: ${profile_data['initial_equity']:.2f}"
+        if initial_equity:
+            equity_info = f", initial equity: ${initial_equity:.2f}"
         
         message = f"Profile created and funded with {request.initial_deposit} USDC{equity_info}"
         
         return CreateProfileResponse(
-            profile_id=profile_data["profile_id"],
-            address=profile_data["address"],
-            signer_address=profile_data["signer_address"],
-            persona=profile_data["persona"],
+            profile_id=account_id,
+            address=account.address,
+            signer_address=signer_address,
+            persona=account.persona.model_dump(),
             initial_deposit=request.initial_deposit,
             message=message,
         )
         
-    except ValueError as e:  # ProfileCreationError was removed
+    except AccountCreationError as e:
         # Profile creation specific error
         raise HTTPException(
             status_code=400,
@@ -490,4 +531,77 @@ async def get_balance(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to get balance: {e!s}",
+        )
+
+
+@router.patch("/profiles/{profile_id}/persona")
+async def update_persona(
+    profile_id: str,
+    persona_update: PersonaUpdate,
+    api_key: str = Depends(verify_api_key),
+) -> dict:
+    """
+    Update specific persona fields for enhanced prompt generation.
+    
+    This endpoint allows granular updates to persona attributes that
+    affect AI behavior and prompt generation, including:
+    - Basic info (name, bio, trading style)
+    - Personality configuration (type, speech patterns, beliefs)
+    - Interaction preferences
+    
+    All fields are optional - only provided fields will be updated.
+    """
+    try:
+        account = storage.get_account(profile_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        if not account.persona:
+            raise HTTPException(
+                status_code=400,
+                detail="Profile has no persona to update",
+            )
+        
+        # Update only provided fields
+        update_data = persona_update.model_dump(exclude_unset=True)
+        updated_fields = []
+        
+        for field, value in update_data.items():
+            if hasattr(account.persona, field):
+                setattr(account.persona, field, value)
+                updated_fields.append(field)
+        
+        # Save updated account
+        storage.save_account(account)
+        
+        # Publish update event
+        from ..realtime.bus import BUS
+        from ..realtime.events import EventType, RealtimeEvent
+        
+        update_event = RealtimeEvent(
+            type=EventType.PROFILE_UPDATED,
+            profile_id=profile_id,
+            payload={
+                "profile_id": profile_id,
+                "persona_updated": True,
+                "updated_fields": updated_fields,
+                "personality_type": account.persona.personality_type,
+            },
+        )
+        await BUS.publish(update_event)
+        
+        return {
+            "success": True,
+            "message": f"Updated {len(updated_fields)} persona fields",
+            "profile_id": profile_id,
+            "updated_fields": updated_fields,
+            "persona": account.persona.model_dump(),
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update persona: {e!s}",
         )

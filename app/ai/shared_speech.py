@@ -5,14 +5,14 @@ Global shared speech patterns that all personalities can use.
 # Market reaction phrases that any personality can adapt
 MARKET_REACTIONS = {
     "pump": {
-        "generic": ["send it", "number go up", "lfg", "moon time", "pump it"],
+        "generic": ["send it", "number go up", "lfg", "send to valhalla"],
         "excited": ["holy pump", "parabolic", "face ripper", "melting up"],
         "cautious": ["overextended", "blow off top", "unsustainable", "toppy"],
     },
     "dump": {
         "generic": ["rekt", "pain", "oof", "guh", "down bad"],
-        "panic": ["capitulation", "blood bath", "max pain", "liquidated"],
-        "calm": ["healthy pullback", "buy the dip", "accumulation zone"],
+        "panic": ["capitulation", "blood bath", "max pain", "liquidated", "buying rope"],
+        "calm": ["healthy pullback", "buy the dip", "accumulation zone", "whales are manipulating"],
     },
     "sideways": {
         "generic": ["crabbing", "ranging", "chop", "consolidation"],
@@ -67,6 +67,21 @@ PERSONALITY_ADAPTATIONS = {
         "dump": ["accumulation", "capitulation near", "patient bids"],
         "greeting": ["observing", "watching flow"],
     },
+    "schizo": {
+        "pump": ["THE PSYCHOSPHERE YEARNS", "ACCELERATE", "ABANDON HOPE", "MOBILIZE THE VOID"],
+        "dump": ["THE TERROR COMES", "THRASH AGAINST IT", "PLUNGE RECKLESSLY", "IT WILL CLAIM YOU"],
+        "greeting": ["WELCOME TO THE ABYSS", "THE SIMULATION SPEAKS", "NEITHER WISDOM NOR TECHNIQUE"],
+    },
+    "degen_spartan": {
+        "pump": ["supercycle confirmed", "HFSP", "lfg", "still early"],
+        "dump": ["temporary", "be retarded when others fearful", "accumulate", "dump on followers later"],
+        "greeting": ["sup anon", "ready to pump bags", "supercycle loading"],
+    },
+    "hazmat_cat": {
+        "pump": ["uponly lmeow", "gmeow to moon", "metaverse integration", "TCL: pump good"],
+        "dump": ["segmented downtrend meow", "scam detected lmeow", "TCL: markets dump", "bad vibes gmeow"],
+        "greeting": ["gmeow", "lmeow fren", "cat doing research", "third person cat says hi"],
+    },
 }
 
 # Quick responses for different situations
@@ -78,14 +93,6 @@ QUICK_RESPONSES = {
     "dismissal": ["whatever", "cool story", "sure buddy", "ok boomer"],
 }
 
-# Emojis (used sparingly by some personalities)
-TRADING_EMOJIS = {
-    "bullish": ["🚀", "📈", "🟢", "💚", "🔥"],
-    "bearish": ["📉", "🔴", "💔", "🩸", "☠️"],
-    "neutral": ["🦀", "😴", "🤷", "⏸️", "😐"],
-    "money": ["💰", "💵", "💸", "🤑", "💎"],
-    "reaction": ["😂", "😭", "🤡", "😤", "🙏"],
-}
 
 def get_market_reaction(personality_type: str, market_state: str, intensity: str = "generic") -> str:
     """Get appropriate market reaction for personality."""
