@@ -3,12 +3,11 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
 
-from ..models import Account, TradeDecision, TradingDecisionLog, MarketContext
+from ..models import Account, MarketContext, TradeDecision, TradingDecisionLog
 from ..services.ai_client import AIClient, AIClientError
-from ..services.rise_client import RiseClient, RiseAPIError
 from ..services.mock_social import MockSocialClient
+from ..services.rise_client import RiseAPIError, RiseClient
 from ..services.storage import JSONStorage
 
 
@@ -19,7 +18,7 @@ class TradingBot:
         self,
         interval_seconds: int = 60,
         max_position_usd: float = 100.0,
-        dry_run: bool = True
+        dry_run: bool = True,
     ):
         self.interval_seconds = interval_seconds
         self.max_position_usd = max_position_usd
@@ -33,8 +32,8 @@ class TradingBot:
         
         # Bot state
         self.is_running = False
-        self.active_accounts: List[Account] = []
-        self.market_cache: Dict = {}
+        self.active_accounts: list[Account] = []
+        self.market_cache: dict = {}
         self.last_social_update = datetime.now()
         
         # Setup logging
@@ -178,11 +177,11 @@ class TradingBot:
                 self.logger.info(f"   📚 Using {len(trading_history)} historical insights for decision making")
                 decision = await self.ai_client.get_enhanced_trade_decision(
                     persona, market_data, current_positions, available_balance,
-                    trading_history=trading_history, recent_posts=recent_posts
+                    trading_history=trading_history, recent_posts=recent_posts,
                 )
             else:
                 decision = await self.ai_client.get_trade_decision(
-                    persona, market_data, current_positions, available_balance
+                    persona, market_data, current_positions, available_balance,
                 )
             
             # Create comprehensive decision log
@@ -192,17 +191,17 @@ class TradingBot:
                 account_id=account.id,
                 persona_name=persona.name,
                 market_context=MarketContext(
-                    btc_price=market_data.get('btc_price', 0),
-                    eth_price=market_data.get('eth_price', 0),
-                    btc_change=market_data.get('btc_change', 0),
-                    eth_change=market_data.get('eth_change', 0)
+                    btc_price=market_data.get("btc_price", 0),
+                    eth_price=market_data.get("eth_price", 0),
+                    btc_change=market_data.get("btc_change", 0),
+                    eth_change=market_data.get("eth_change", 0),
                 ),
                 available_balance=available_balance,
                 current_positions=current_positions,
                 total_pnl=total_pnl,
                 recent_posts=recent_posts[:5] if recent_posts else [],
                 decision=decision,
-                executed=False
+                executed=False,
             )
             
             self.logger.info(f"   🤖 AI Decision: {decision.should_trade}")
@@ -215,7 +214,7 @@ class TradingBot:
             # 5. Execute trade if decision is positive
             if decision.should_trade and decision.confidence > 0.6:
                 execution_result = await self._execute_trade_decision(account, decision, available_balance)
-                decision_log.executed = bool(execution_result.get('success', False))
+                decision_log.executed = bool(execution_result.get("success", False))
                 decision_log.execution_details = execution_result
             else:
                 if not decision.should_trade:
@@ -231,7 +230,7 @@ class TradingBot:
         except Exception as e:
             self.logger.error(f"   ❌ Unexpected error: {e}")
     
-    async def _execute_trade_decision(self, account: Account, decision: TradeDecision, balance: float) -> Dict:
+    async def _execute_trade_decision(self, account: Account, decision: TradeDecision, balance: float) -> dict:
         """Execute a trading decision and return result."""
         if not decision.market or not decision.action:
             self.logger.warning("   ⚠️  Invalid trade decision - missing market or action")
@@ -256,7 +255,7 @@ class TradingBot:
         price_key = f"{decision.market.lower()}_price"
         trade_size = min(
             balance * decision.size_percent,
-            self.max_position_usd / self.market_cache.get(price_key, 50000)  # Fallback price
+            self.max_position_usd / self.market_cache.get(price_key, 50000),  # Fallback price
         )
         
         current_price = self.market_cache.get(price_key, 0)
@@ -269,7 +268,7 @@ class TradingBot:
                 "action": decision.action, 
                 "market": decision.market,
                 "size": trade_size,
-                "price": current_price
+                "price": current_price,
             }
         
         # Execute real trade
@@ -283,18 +282,19 @@ class TradingBot:
                 size=trade_size,
                 price=current_price * 1.01 if decision.action == "buy" else current_price * 0.99,  # Small slippage
                 side=decision.action,
-                order_type="limit"
+                order_type="limit",
             )
             
             if order_response.get("success"):
-                self.logger.info(f"   ✅ Order placed successfully!")
+                self.logger.info("   ✅ Order placed successfully!")
                 order_id = order_response.get("data", {}).get("order_id")
                 if order_id:
                     self.logger.info(f"      🆔 Order ID: {order_id}")
                 
                 # Save trade record
-                from ..models import Trade
                 import uuid
+
+                from ..models import Trade
                 trade = Trade(
                     id=str(uuid.uuid4()),
                     account_id=account.id,
@@ -304,7 +304,7 @@ class TradingBot:
                     price=current_price,
                     reasoning=decision.reasoning,
                     timestamp=datetime.now(),
-                    status="submitted"
+                    status="submitted",
                 )
                 self.storage.save_trade(trade)
                 
@@ -315,7 +315,7 @@ class TradingBot:
                     "action": decision.action,
                     "market": decision.market,
                     "size": trade_size,
-                    "price": current_price
+                    "price": current_price,
                 }
                 
             else:
@@ -323,7 +323,7 @@ class TradingBot:
                 return {
                     "success": False,
                     "error": "Order placement failed",
-                    "response": order_response
+                    "response": order_response,
                 }
                 
         except RiseAPIError as e:
@@ -360,7 +360,7 @@ class TradingBot:
                 "btc_price": 95000,
                 "eth_price": 3500,
                 "btc_change": 0.0,
-                "eth_change": 0.0
+                "eth_change": 0.0,
             })
     
     async def _update_social_activity(self):
@@ -375,7 +375,7 @@ class TradingBot:
             if tweets:
                 self.logger.info(f"   @{handle}: \"{tweets[0][:60]}{'...' if len(tweets[0]) > 60 else ''}\"")
     
-    async def _get_recent_social_activity(self, handle: str) -> List[str]:
+    async def _get_recent_social_activity(self, handle: str) -> list[str]:
         """Get recent social activity for a handle."""
         try:
             profile_data = await self.mock_social.get_user_profile(handle)
@@ -383,7 +383,7 @@ class TradingBot:
         except Exception:
             return []
     
-    def _get_current_market_data(self) -> Dict:
+    def _get_current_market_data(self) -> dict:
         """Format current market data for AI decision making."""
         return {
             "btc_price": self.market_cache.get("btc_price", 95000),
@@ -392,7 +392,7 @@ class TradingBot:
             "eth_change": self.market_cache.get("eth_change", 0.0),
         }
     
-    def _format_positions_for_ai(self, positions: List[Dict]) -> Dict[str, float]:
+    def _format_positions_for_ai(self, positions: list[dict]) -> dict[str, float]:
         """Format positions for AI decision making."""
         formatted = {"BTC": 0.0, "ETH": 0.0}
         
@@ -423,7 +423,7 @@ class TradingBot:
         await self.rise_client.close()
         self.logger.info("✅ Trading bot stopped cleanly")
     
-    def get_status(self) -> Dict:
+    def get_status(self) -> dict:
         """Get current bot status."""
         return {
             "is_running": self.is_running,
@@ -434,7 +434,7 @@ class TradingBot:
             "current_prices": {
                 "BTC": self.market_cache.get("btc_price"),
                 "ETH": self.market_cache.get("eth_price"),
-            }
+            },
         }
     
     async def _check_and_update_order_fills(self):
@@ -473,7 +473,7 @@ class TradingBot:
                                             decision_id=decision["id"],
                                             trade_id=trade_id,
                                             pnl=pnl,
-                                            status="filled"
+                                            status="filled",
                                         )
                                         self.logger.info(f"Updated decision {decision['id']} with P&L: ${pnl:+.2f}")
                                         break

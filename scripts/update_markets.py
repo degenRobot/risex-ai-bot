@@ -3,9 +3,9 @@
 
 import asyncio
 import json
-from pathlib import Path
-from datetime import datetime
 import sys
+from datetime import datetime
+from pathlib import Path
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -28,7 +28,7 @@ async def fetch_and_save_markets():
                 "source": "https://api.testnet.rise.trade/v1/markets",
                 "markets": {},
                 "market_id_map": {},  # Quick lookup by ID
-                "symbol_map": {}      # Quick lookup by symbol
+                "symbol_map": {},      # Quick lookup by symbol
             }
             
             for market in markets:
@@ -69,7 +69,7 @@ async def fetch_and_save_markets():
                         "last_price": market.get("last_price"),
                         "index_price": market.get("index_price"),
                         "funding_rate": market.get("funding_rate", "0"),
-                        "next_funding_at": market.get("next_funding_at")
+                        "next_funding_at": market.get("next_funding_at"),
                     }
                     
                     # Create quick lookup maps
@@ -81,7 +81,7 @@ async def fetch_and_save_markets():
             markets_data["summary"] = {
                 "total_markets": len(markets_data["markets"]),
                 "available_markets": sum(1 for m in markets_data["markets"].values() if m["available"]),
-                "post_only_markets": sum(1 for m in markets_data["markets"].values() if m["post_only"])
+                "post_only_markets": sum(1 for m in markets_data["markets"].values() if m["post_only"]),
             }
             
             # Save to file

@@ -154,29 +154,76 @@ POST /api/profiles/{account_id}/chat
 ```json
 {
   "message": "BTC is pumping to 100k!",
-  "chatHistory": "",
-  "sessionId": null
+  "chatHistory": "",  // Deprecated - server uses persistent history
+  "sessionId": null,
+  "user_id": "user-123",  // For message deduplication
+  "stream": false  // Set to true for streaming responses
 }
 ```
+
+**New Features:**
+- **Server-side chat history**: No need to send chatHistory anymore
+- **Streaming responses**: Set `stream: true` for chunk-by-chunk delivery
+- **Message deduplication**: Provide `user_id` to avoid echo in WebSocket
 
 **Response:**
 ```json
 {
   "response": "omg senpai BTC to 100k?! moon mission confirmed...",
   "chatHistory": "[{\"role\": \"user\", \"content\": \"...\"}, ...]",
-  "profileUpdates": [
-    "Updated BTC outlook to Bullish: ...",
-    "Updated trading bias: Bullish"
-  ],
+  "message_id": null,
+  "profileUpdates": [],
   "sessionId": "cc3fbed7-c404-4f6d-a0eb-89d0bf4d328a",
   "context": {
-    "currentPnL": 0,
-    "openPositions": 0,
-    "lastUpdate": "2026-01-02T07:50:30.931535",
-    "personality": "Wassie McSmol",
-    "speechStyle": "smol",
-    "riskProfile": "degen"
+    "message_count": 15
   }
+}
+```
+
+### Get Chat History
+```bash
+GET /api/profiles/{account_id}/chat/history?limit=50&after_id={message_id}
+```
+
+**Query Parameters:**
+- `limit`: Maximum messages to return (1-200, default: 50)
+- `after_id`: Return messages after this ID (for pagination)
+
+**Response:**
+```json
+{
+  "messages": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "role": "user",
+      "content": "What's your take on the market?",
+      "author": "user-123",
+      "timestamp": "2025-01-03T10:30:00Z",
+      "metadata": {}
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "role": "assistant",
+      "content": "The market looks bullish to me...",
+      "author": "ai",
+      "timestamp": "2025-01-03T10:30:15Z",
+      "metadata": {"model": "x-ai/grok-beta", "temperature": 0.7}
+    }
+  ],
+  "total": 150,
+  "has_more": true
+}
+```
+
+### Clear Chat History
+```bash
+DELETE /api/profiles/{account_id}/chat/history
+```
+
+**Response:**
+```json
+{
+  "message": "Chat history cleared for profile {account_id}"
 }
 ```
 
@@ -290,7 +337,7 @@ Headers: X-API-Key: {your_api_key}
 
 ### Create New Profile
 ```bash
-POST /api/admin/profiles
+POST /api/admin/profiles  (Currently Disabled - Returns 501)
 Headers: X-API-Key: {your_api_key}
 ```
 
@@ -322,6 +369,78 @@ Headers: X-API-Key: {your_api_key}
   "persona": {...},
   "initial_deposit": 100.0,
   "message": "Profile created and funded with 100.0 USDC"
+}
+```
+
+### Get Profile Details (Admin)
+```bash
+GET /api/admin/profiles/{profile_id}
+Headers: X-API-Key: {your_api_key}
+```
+
+**Response:**
+```json
+{
+  "profile_id": "f1a96dac-89fd-4eeb-9dc6-5612085425d0",
+  "address": "0xdE3244FCBf035A374c556d3E1c1774ebA74436fD",
+  "signer_address": "0x6A37D8A9213489a273bf037C20090d7804388FD8",
+  "persona": {
+    "name": "Test Trader",
+    "handle": "test_trader",
+    "bio": "A test trading profile",
+    "trading_style": "momentum",
+    "risk_tolerance": 0.5,
+    "favorite_assets": ["BTC", "ETH"],
+    "personality_traits": ["analytical", "balanced"]
+  },
+  "is_active": true,
+  "is_registered": true,
+  "has_deposited": true,
+  "deposit_amount": 100.0,
+  "initial_equity": 100.0,
+  "current_equity": 105.32,
+  "created_at": "2025-01-03T10:30:00Z",
+  "registered_at": "2025-01-03T10:30:15Z",
+  "deposited_at": "2025-01-03T10:30:30Z"
+}
+```
+
+### Update Profile
+```bash
+PUT /api/admin/profiles/{profile_id}
+Headers: X-API-Key: {your_api_key}
+```
+
+**Request Body:**
+```json
+{
+  "persona_update": {
+    "bio": "Updated bio - now more aggressive",
+    "trading_style": "aggressive",
+    "risk_tolerance": 0.8,
+    "favorite_assets": ["BTC", "ETH", "SOL", "LINK"],
+    "personality_traits": ["bold", "risk-taker", "opportunistic"]
+  },
+  "is_active": true,
+  "deposit_amount": 200.0
+}
+```
+
+**Editable Fields:**
+- **Persona fields:** `name`, `bio`, `trading_style`, `risk_tolerance`, `favorite_assets`, `personality_traits`
+- **Account fields:** `is_active`, `deposit_amount` (tracking only)
+
+**Non-editable fields** (for security):
+- Address, private keys, signer key
+- Profile ID
+- Registration status
+
+**Response:**
+```json
+{
+  "message": "Profile f1a96dac-89fd-4eeb-9dc6-5612085425d0 updated successfully",
+  "profile_id": "f1a96dac-89fd-4eeb-9dc6-5612085425d0",
+  "updated_fields": ["persona_update", "is_active", "deposit_amount"]
 }
 ```
 
@@ -513,6 +632,100 @@ POST /api/profiles/{handle}/stop
 }
 ```
 
+## WebSocket Endpoint
+
+### Connect to WebSocket
+```
+ws://localhost:8000/ws?profile_id={profile_id}&user_id={user_id}&subscribe_global={bool}
+```
+
+**Query Parameters:**
+- `profile_id`: Subscribe to events for a specific profile (optional)
+- `user_id`: User identifier for message deduplication (optional)
+- `subscribe_global`: Subscribe to all events (default: false)
+- `last_event_id`: Resume from specific event ID (optional)
+
+**Connection Example:**
+```javascript
+const ws = new WebSocket('ws://localhost:8000/ws?profile_id=abc-123&user_id=user-456');
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Event:', data.type, data.payload);
+};
+```
+
+**Event Types:**
+- `market.update` - Market price updates
+- `trade.decision` - AI trading decisions
+- `trade.order_*` - Order lifecycle events
+- `account.update` - Account equity changes
+- `chat.user_message` - New user messages
+- `chat.assistant_start` - AI starts responding
+- `chat.assistant_chunk` - Streaming AI response chunk
+- `chat.assistant_final` - Complete AI message
+- `profile.updated` - Profile configuration changes
+- `bot.connected` - WebSocket connection confirmed
+- `bot.disconnected` - Connection closed
+
+**Example Events:**
+```json
+// Connection confirmed
+{
+  "type": "bot.connected",
+  "payload": {
+    "connection_id": "123e4567-e89b-12d3-a456-426614174000",
+    "profile_id": "abc-123",
+    "user_id": "user-456",
+    "subscribed": true
+  }
+}
+
+// Chat streaming chunk
+{
+  "type": "chat.assistant_chunk",
+  "profile_id": "abc-123",
+  "payload": {
+    "content": "I think BTC is",
+    "chunk_index": 0
+  },
+  "metadata": {
+    "message_id": "msg-789",
+    "chunk_index": 0,
+    "correlation_id": "corr-123"
+  }
+}
+
+// Profile update
+{
+  "type": "profile.updated",
+  "profile_id": "abc-123",
+  "payload": {
+    "profile_id": "abc-123",
+    "updated_fields": ["bio", "trading_style", "risk_tolerance"],
+    "is_active": true
+  }
+}
+```
+
+### WebSocket Status
+```bash
+GET /ws/status
+```
+
+**Response:**
+```json
+{
+  "active_connections": 5,
+  "subscribers": {
+    "global": 1,
+    "profile_specific": 4
+  },
+  "event_bus": "active",
+  "timestamp": "2025-01-03T10:30:00Z"
+}
+```
+
 ## Error Responses
 
 ### 400 Bad Request
@@ -556,7 +769,38 @@ POST /api/profiles/{handle}/stop
 }
 ```
 
-## Recent Updates (January 3, 2026)
+## Recent Updates
+
+### Phase A-C Enhancements (January 2025)
+
+1. **WebSocket Support** (`/ws`):
+   - Real-time event streaming for all system activities
+   - Profile-specific and global subscriptions
+   - Message deduplication with user_id
+   - Reconnection support with last_event_id
+   - Event types for market, trading, chat, and profile updates
+
+2. **Enhanced Chat System**:
+   - **Server-side chat history**: All conversations now persisted in JSONL format
+   - **Streaming responses**: Set `stream: true` for chunk-by-chunk AI responses
+   - **Chat history endpoint**: `GET /api/profiles/{id}/chat/history` with pagination
+   - **Clear history**: `DELETE /api/profiles/{id}/chat/history`
+   - **Message deduplication**: Provide user_id to prevent echo
+
+3. **Profile Management Enhancements**:
+   - **Update profiles**: `PUT /api/admin/profiles/{id}` for editing personas
+   - **Detailed admin view**: `GET /api/admin/profiles/{id}` with all fields
+   - **Initial equity tracking**: Profiles now track starting equity for P&L
+   - **Validation**: Asset symbols, risk tolerance, and field constraints
+   - **Event publishing**: Profile updates trigger WebSocket events
+
+4. **Profile Factory**:
+   - Centralized profile creation with error handling
+   - Automated RISE registration and USDC deposits
+   - Retry logic for failed deposits
+   - Initial equity fetching for P&L baseline
+
+### Original Updates (January 3, 2026)
 
 ### New Fields in Responses
 

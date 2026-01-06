@@ -3,20 +3,20 @@
 
 import asyncio
 import json
-from datetime import datetime
-from pathlib import Path
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from app.services.rise_client import RiseClient
-from app.services.storage import JSONStorage
-from app.services.profile_chat import ProfileChatService
-from app.services.thought_process import ThoughtProcessManager
+from httpx import AsyncClient
+
+from app.api.server import app
 from app.core.trading_loop import TradingBot
 from app.services.ai_client import AIClient
-from app.api.server import app
-from httpx import AsyncClient
+from app.services.profile_chat import ProfileChatService
+from app.services.rise_client import RiseClient
+from app.services.storage import JSONStorage
+from app.services.thought_process import ThoughtProcessManager
 
 
 async def check_available_markets():
@@ -31,10 +31,10 @@ async def check_available_markets():
         
         active_markets = []
         for market in markets:
-            market_id = market.get('market_id', market.get('id', '0'))
-            symbol = market.get('symbol', market.get('market', 'Unknown'))
-            status = market.get('status', 'active')
-            available = market.get('available', True)
+            market_id = market.get("market_id", market.get("id", "0"))
+            symbol = market.get("symbol", market.get("market", "Unknown"))
+            status = market.get("status", "active")
+            available = market.get("available", True)
             
             print(f"Market {market_id}: {symbol}")
             print(f"  Status: {status}")
@@ -47,11 +47,11 @@ async def check_available_markets():
             except:
                 print("  Price: Error fetching")
             
-            if status == 'active' or int(market_id) <= 5:  # Include first 5 markets
+            if status == "active" or int(market_id) <= 5:  # Include first 5 markets
                 active_markets.append({
-                    'id': int(market_id),
-                    'symbol': symbol,
-                    'status': status
+                    "id": int(market_id),
+                    "symbol": symbol,
+                    "status": status,
                 })
             
             print()
@@ -71,16 +71,16 @@ async def test_chat_influence_on_trading(account_id: str):
     test_messages = [
         {
             "message": "I think BTC is going to $100k by end of day, Fed is printing money like crazy!",
-            "expected_influence": "bullish_btc"
+            "expected_influence": "bullish_btc",
         },
         {
             "message": "ETH looks weak, might dump to $2800. But if it hits $2800 I'm buying hard!",
-            "expected_influence": "bearish_eth_short_term"
+            "expected_influence": "bearish_eth_short_term",
         },
         {
             "message": "SOL is the future, way faster than ETH. I'm loading up here at these prices",
-            "expected_influence": "bullish_sol"
-        }
+            "expected_influence": "bullish_sol",
+        },
     ]
     
     for test in test_messages:
@@ -89,21 +89,21 @@ async def test_chat_influence_on_trading(account_id: str):
         # Send chat message
         result = await chat_service.chat_with_profile(
             account_id=account_id,
-            user_message=test['message'],
-            chat_history=""
+            user_message=test["message"],
+            chat_history="",
         )
         
         print(f"🤖 AI Response: {result.get('response', 'No response')[:200]}...")
         
         # Check profile updates
-        if 'profileUpdates' in result:
+        if "profileUpdates" in result:
             print(f"📝 Profile Updates: {json.dumps(result['profileUpdates'], indent=2)}")
         
         # Check thought process updates
         recent_thoughts = await thought_manager.get_recent_thoughts(
             account_id, 
             minutes=5,
-            entry_types=['chat_influence']
+            entry_types=["chat_influence"],
         )
         
         if recent_thoughts:
@@ -136,13 +136,13 @@ async def test_trading_on_all_markets(account_id: str, markets: list):
     async with RiseClient() as client:
         print("\n📍 Current Positions:")
         for market in markets[:5]:  # Test first 5 markets
-            market_id = market['id']
-            symbol = market['symbol']
+            market_id = market["id"]
+            symbol = market["symbol"]
             
             try:
                 response = await client._request(
                     "GET", "/v1/account/position",
-                    params={"account": account.address, "market_id": market_id}
+                    params={"account": account.address, "market_id": market_id},
                 )
                 
                 position = response.get("data", {}).get("position", {})
@@ -172,7 +172,7 @@ async def test_trading_on_all_markets(account_id: str, markets: list):
                 account.persona,
                 market_prices,
                 positions,
-                balance
+                balance,
             )
             
             if decision:
@@ -218,12 +218,12 @@ async def test_api_endpoints():
         print("\n2️⃣ Testing POST /api/profiles/{account_id}/chat")
         chat_data = {
             "message": "What's your view on the market right now?",
-            "chatHistory": ""
+            "chatHistory": "",
         }
         
         response = await client.post(
             f"/api/profiles/{account_id}/chat",
-            json=chat_data
+            json=chat_data,
         )
         print(f"   Status: {response.status_code}")
         
@@ -254,7 +254,7 @@ async def check_data_persistence():
         "thought_processes.json", 
         "chat_sessions.json",
         "trading_decisions.json",
-        "pending_actions.json"
+        "pending_actions.json",
     ]
     
     data_dir = Path("data")

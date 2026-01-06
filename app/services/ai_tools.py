@@ -1,12 +1,16 @@
 """AI tools for structured trading actions via OpenRouter."""
 
-from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
 import logging
+from datetime import datetime, timedelta
+from typing import Any
 
 from ..pending_actions import (
-    PendingAction, ActionType, ActionStatus, 
-    TriggerCondition, OperatorType, ActionParams
+    ActionParams,
+    ActionStatus,
+    ActionType,
+    OperatorType,
+    PendingAction,
+    TriggerCondition,
 )
 
 
@@ -20,7 +24,7 @@ class TradingTools:
         self.logger = logging.getLogger(__name__)
     
     @property
-    def tools_schema(self) -> List[Dict[str, Any]]:
+    def tools_schema(self) -> list[dict[str, Any]]:
         """Get OpenRouter-compatible tool schemas."""
         return [
             {
@@ -34,23 +38,23 @@ class TradingTools:
                             "market": {
                                 "type": "string",
                                 "description": "Market symbol (e.g., 'BTC', 'ETH')",
-                                "enum": ["BTC", "ETH"]
+                                "enum": ["BTC", "ETH"],
                             },
                             "side": {
                                 "type": "string",
                                 "description": "Order side",
-                                "enum": ["buy", "sell"]
+                                "enum": ["buy", "sell"],
                             },
                             "size_percent": {
                                 "type": "number",
                                 "description": "Size as percentage of available balance (0.01 to 0.5 max)",
                                 "minimum": 0.01,
-                                "maximum": 0.5
-                            }
+                                "maximum": 0.5,
+                            },
                         },
-                        "required": ["market", "side", "size_percent"]
-                    }
-                }
+                        "required": ["market", "side", "size_percent"],
+                    },
+                },
             },
             {
                 "type": "function",
@@ -63,28 +67,28 @@ class TradingTools:
                             "market": {
                                 "type": "string",
                                 "description": "Market symbol",
-                                "enum": ["BTC", "ETH"]
+                                "enum": ["BTC", "ETH"],
                             },
                             "side": {
                                 "type": "string",
                                 "description": "Order side",
-                                "enum": ["buy", "sell"]
+                                "enum": ["buy", "sell"],
                             },
                             "size_percent": {
                                 "type": "number",
                                 "description": "Size as percentage of available balance",
                                 "minimum": 0.01,
-                                "maximum": 1.0
+                                "maximum": 1.0,
                             },
                             "price": {
                                 "type": "number",
                                 "description": "Limit order price",
-                                "minimum": 0
-                            }
+                                "minimum": 0,
+                            },
                         },
-                        "required": ["market", "side", "size_percent", "price"]
-                    }
-                }
+                        "required": ["market", "side", "size_percent", "price"],
+                    },
+                },
             },
             {
                 "type": "function",
@@ -97,19 +101,19 @@ class TradingTools:
                             "market": {
                                 "type": "string",
                                 "description": "Market symbol",
-                                "enum": ["BTC", "ETH"]
+                                "enum": ["BTC", "ETH"],
                             },
                             "percent": {
                                 "type": "number",
                                 "description": "Percentage of position to close (default 100)",
                                 "minimum": 0,
                                 "maximum": 100,
-                                "default": 100
-                            }
+                                "default": 100,
+                            },
                         },
-                        "required": ["market"]
-                    }
-                }
+                        "required": ["market"],
+                    },
+                },
             },
             {
                 "type": "function",
@@ -122,17 +126,17 @@ class TradingTools:
                             "market": {
                                 "type": "string",
                                 "description": "Market symbol",
-                                "enum": ["BTC", "ETH"]
+                                "enum": ["BTC", "ETH"],
                             },
                             "trigger_price": {
                                 "type": "number",
                                 "description": "Price at which to trigger stop loss",
-                                "minimum": 0
-                            }
+                                "minimum": 0,
+                            },
                         },
-                        "required": ["market", "trigger_price"]
-                    }
-                }
+                        "required": ["market", "trigger_price"],
+                    },
+                },
             },
             {
                 "type": "function",
@@ -145,17 +149,17 @@ class TradingTools:
                             "market": {
                                 "type": "string",
                                 "description": "Market symbol",
-                                "enum": ["BTC", "ETH"]
+                                "enum": ["BTC", "ETH"],
                             },
                             "trigger_price": {
                                 "type": "number",
                                 "description": "Price at which to take profit",
-                                "minimum": 0
-                            }
+                                "minimum": 0,
+                            },
                         },
-                        "required": ["market", "trigger_price"]
-                    }
-                }
+                        "required": ["market", "trigger_price"],
+                    },
+                },
             },
             {
                 "type": "function",
@@ -168,43 +172,43 @@ class TradingTools:
                             "market": {
                                 "type": "string",
                                 "description": "Market symbol",
-                                "enum": ["BTC", "ETH"]
+                                "enum": ["BTC", "ETH"],
                             },
                             "side": {
                                 "type": "string",
                                 "description": "Order side",
-                                "enum": ["buy", "sell"]
+                                "enum": ["buy", "sell"],
                             },
                             "size_percent": {
                                 "type": "number",
                                 "description": "Size as percentage of balance",
                                 "minimum": 0.01,
-                                "maximum": 1.0
+                                "maximum": 1.0,
                             },
                             "trigger_price": {
                                 "type": "number",
                                 "description": "Price condition to trigger order",
-                                "minimum": 0
+                                "minimum": 0,
                             },
                             "trigger_condition": {
                                 "type": "string",
                                 "description": "When to trigger relative to price",
-                                "enum": ["above", "below"]
+                                "enum": ["above", "below"],
                             },
                             "limit_price": {
                                 "type": "number",
                                 "description": "Limit order price",
-                                "minimum": 0
+                                "minimum": 0,
                             },
                             "expires_hours": {
                                 "type": "number",
                                 "description": "Hours until order expires (default 24)",
-                                "default": 24
-                            }
+                                "default": 24,
+                            },
                         },
-                        "required": ["market", "side", "size_percent", "trigger_price", "trigger_condition", "limit_price"]
-                    }
-                }
+                        "required": ["market", "side", "size_percent", "trigger_price", "trigger_condition", "limit_price"],
+                    },
+                },
             },
             {
                 "type": "function", 
@@ -216,24 +220,24 @@ class TradingTools:
                         "properties": {
                             "action_id": {
                                 "type": "string",
-                                "description": "ID of the pending action to cancel"
-                            }
+                                "description": "ID of the pending action to cancel",
+                            },
                         },
-                        "required": ["action_id"]
-                    }
-                }
-            }
+                        "required": ["action_id"],
+                    },
+                },
+            },
         ]
     
     async def execute_tool_call(
         self, 
         tool_name: str, 
-        arguments: Dict[str, Any], 
+        arguments: dict[str, Any], 
         account_id: str,
         persona_name: str,
         account_key: str,
-        signer_key: str
-    ) -> Dict[str, Any]:
+        signer_key: str,
+    ) -> dict[str, Any]:
         """Execute a tool call and return result."""
         
         self.logger.info(f"🔧 Executing tool: {tool_name} with args: {arguments}")
@@ -241,56 +245,56 @@ class TradingTools:
         try:
             if tool_name == "place_market_order":
                 return await self._place_market_order(
-                    account_id, persona_name, account_key, signer_key, **arguments
+                    account_id, persona_name, account_key, signer_key, **arguments,
                 )
             
             elif tool_name == "place_limit_order":
                 return await self._place_limit_order(
-                    account_id, persona_name, account_key, signer_key, **arguments
+                    account_id, persona_name, account_key, signer_key, **arguments,
                 )
             
             elif tool_name == "close_position":
                 return await self._close_position(
-                    account_id, persona_name, account_key, signer_key, **arguments
+                    account_id, persona_name, account_key, signer_key, **arguments,
                 )
             
             elif tool_name == "set_stop_loss":
                 return await self._set_stop_loss(
-                    account_id, persona_name, **arguments
+                    account_id, persona_name, **arguments,
                 )
             
             elif tool_name == "set_take_profit":
                 return await self._set_take_profit(
-                    account_id, persona_name, **arguments
+                    account_id, persona_name, **arguments,
                 )
             
             elif tool_name == "schedule_limit_order":
                 return await self._schedule_limit_order(
-                    account_id, persona_name, **arguments
+                    account_id, persona_name, **arguments,
                 )
             
             elif tool_name == "cancel_pending_action":
                 return await self._cancel_pending_action(
-                    account_id, **arguments
+                    account_id, **arguments,
                 )
             
             else:
                 return {
                     "success": False,
-                    "error": f"Unknown tool: {tool_name}"
+                    "error": f"Unknown tool: {tool_name}",
                 }
                 
         except Exception as e:
             self.logger.error(f"Tool execution error: {e}")
             return {
                 "success": False,
-                "error": str(e)
+                "error": str(e),
             }
     
     async def _place_market_order(
         self, account_id: str, persona_name: str, account_key: str, 
-        signer_key: str, market: str, side: str, size_percent: float
-    ) -> Dict[str, Any]:
+        signer_key: str, market: str, side: str, size_percent: float,
+    ) -> dict[str, Any]:
         """Place immediate market order using limit order with price=0."""
         # Get market ID
         from ..core.market_manager import get_market_manager
@@ -344,8 +348,8 @@ class TradingTools:
                 "success": True,
                 "data": {
                     "order_id": f"dry_run_{account_id}_{market}_{side}",
-                    "transaction_hash": "0xdryrun"
-                }
+                    "transaction_hash": "0xdryrun",
+                },
             }
         else:
             # Place real market order using limit with price=0 (as per docs)
@@ -355,7 +359,7 @@ class TradingTools:
                 market_id=market_id,
                 size=size,
                 side=side,
-                reduce_only=False
+                reduce_only=False,
             )
         
         # Check if order was placed successfully
@@ -370,14 +374,14 @@ class TradingTools:
             "order_id": result.get("data", {}).get("order_id") if result else None,
             "executed_size": size,
             "market_price": current_price,
-            "error": None if success else "Order placement failed"
+            "error": None if success else "Order placement failed",
         }
     
     async def _place_limit_order(
         self, account_id: str, persona_name: str, account_key: str,
         signer_key: str, market: str, side: str, 
-        size_percent: float, price: float
-    ) -> Dict[str, Any]:
+        size_percent: float, price: float,
+    ) -> dict[str, Any]:
         """Place limit order at specific price."""
         # Similar to market order but with exact price
         from ..core.market_manager import get_market_manager
@@ -405,20 +409,20 @@ class TradingTools:
             size=size,
             price=price,
             side=side,
-            order_type="limit"
+            order_type="limit",
         )
         
         return {
             "success": result.get("success", False),
             "order_id": result.get("data", {}).get("order_id"),
             "limit_price": price,
-            "size": size
+            "size": size,
         }
     
     async def _close_position(
         self, account_id: str, persona_name: str, account_key: str,
-        signer_key: str, market: str, percent: float = 100
-    ) -> Dict[str, Any]:
+        signer_key: str, market: str, percent: float = 100,
+    ) -> dict[str, Any]:
         """Close existing position."""
         # Get position
         from ..core.market_manager import get_market_manager
@@ -454,20 +458,20 @@ class TradingTools:
             price=slippage_price,
             side=side,
             order_type="limit",
-            reduce_only=True
+            reduce_only=True,
         )
         
         return {
             "success": result.get("success", False),
             "order_id": result.get("data", {}).get("order_id"),
             "closed_size": close_size,
-            "closed_percent": percent
+            "closed_percent": percent,
         }
     
     async def _set_stop_loss(
         self, account_id: str, persona_name: str, 
-        market: str, trigger_price: float
-    ) -> Dict[str, Any]:
+        market: str, trigger_price: float,
+    ) -> dict[str, Any]:
         """Create pending stop loss action."""
         import uuid
         
@@ -480,13 +484,13 @@ class TradingTools:
                 field="price",
                 operator=OperatorType.LESS_EQUAL,
                 value=trigger_price,
-                market=market
+                market=market,
             ),
             action_params=ActionParams(
                 market=market,
-                reduce_percent=100  # Close full position
+                reduce_percent=100,  # Close full position
             ),
-            reasoning=f"Stop loss at ${trigger_price:,.0f} for {market} position"
+            reasoning=f"Stop loss at ${trigger_price:,.0f} for {market} position",
         )
         
         self.storage.save_pending_action(action)
@@ -495,13 +499,13 @@ class TradingTools:
             "success": True,
             "action_id": action.id,
             "trigger_price": trigger_price,
-            "market": market
+            "market": market,
         }
     
     async def _set_take_profit(
         self, account_id: str, persona_name: str,
-        market: str, trigger_price: float
-    ) -> Dict[str, Any]:
+        market: str, trigger_price: float,
+    ) -> dict[str, Any]:
         """Create pending take profit action."""
         import uuid
         
@@ -514,13 +518,13 @@ class TradingTools:
                 field="price",
                 operator=OperatorType.GREATER_EQUAL,
                 value=trigger_price,
-                market=market
+                market=market,
             ),
             action_params=ActionParams(
                 market=market,
-                reduce_percent=100  # Close full position
+                reduce_percent=100,  # Close full position
             ),
-            reasoning=f"Take profit at ${trigger_price:,.0f} for {market} position"
+            reasoning=f"Take profit at ${trigger_price:,.0f} for {market} position",
         )
         
         self.storage.save_pending_action(action)
@@ -529,14 +533,14 @@ class TradingTools:
             "success": True,
             "action_id": action.id,
             "trigger_price": trigger_price,
-            "market": market
+            "market": market,
         }
     
     async def _schedule_limit_order(
         self, account_id: str, persona_name: str, market: str,
         side: str, size_percent: float, trigger_price: float,
-        trigger_condition: str, limit_price: float, expires_hours: float = 24
-    ) -> Dict[str, Any]:
+        trigger_condition: str, limit_price: float, expires_hours: float = 24,
+    ) -> dict[str, Any]:
         """Schedule conditional limit order."""
         import uuid
         
@@ -554,16 +558,16 @@ class TradingTools:
                 field="price",
                 operator=operator,
                 value=trigger_price,
-                market=market
+                market=market,
             ),
             action_params=ActionParams(
                 market=market,
                 side=side,
                 size_percent=size_percent,
-                price=limit_price
+                price=limit_price,
             ),
             expires_at=datetime.now() + timedelta(hours=expires_hours),
-            reasoning=f"Scheduled {side} order for {market} when price {trigger_condition} ${trigger_price:,.0f}"
+            reasoning=f"Scheduled {side} order for {market} when price {trigger_condition} ${trigger_price:,.0f}",
         )
         
         self.storage.save_pending_action(action)
@@ -576,13 +580,13 @@ class TradingTools:
                 "side": side,
                 "trigger": f"{trigger_condition} ${trigger_price:,.0f}",
                 "limit_price": limit_price,
-                "expires": action.expires_at.isoformat()
-            }
+                "expires": action.expires_at.isoformat(),
+            },
         }
     
     async def _cancel_pending_action(
-        self, account_id: str, action_id: str
-    ) -> Dict[str, Any]:
+        self, account_id: str, action_id: str,
+    ) -> dict[str, Any]:
         """Cancel a pending action."""
         action = self.storage.get_pending_action(action_id)
         
@@ -603,6 +607,6 @@ class TradingTools:
             "cancelled_action": {
                 "id": action.id,
                 "type": action.action_type.value,
-                "market": action.action_params.market
-            }
+                "market": action.action_params.market,
+            },
         }

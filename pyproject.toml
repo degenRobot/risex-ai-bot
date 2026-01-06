@@ -24,6 +24,8 @@ tenacity = "^8.2.3"
 loguru = "^0.7.2"
 openai = "^2.14.0"
 web3 = ">=6.0,<7.0"
+aiofiles = "^25.1.0"
+tiktoken = "^0.12.0"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.1.0"

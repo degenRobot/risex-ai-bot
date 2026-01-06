@@ -1,15 +1,15 @@
 """Account and persona management for RISE AI trading bot."""
 
 import uuid
-from typing import List, Optional
+from typing import Optional
 
 from eth_account import Account as EthAccount
 
 from ..models import Account, Persona
 from ..services.ai_client import AIClient
+from ..services.mock_social import MockSocialClient
 from ..services.rise_client import RiseClient
 from ..services.storage import JSONStorage
-from ..services.mock_social import MockSocialClient
 
 
 class AccountManager:
@@ -24,8 +24,8 @@ class AccountManager:
     async def create_account_with_persona(
         self, 
         handle: str, 
-        posts: List[str], 
-        bio: str = ""
+        posts: list[str], 
+        bio: str = "",
     ) -> Account:
         """Create a new trading account with AI-generated persona."""
         
@@ -43,14 +43,14 @@ class AccountManager:
             private_key=eth_account.key.hex(),
             signer_key=signer_account.key.hex(),
             persona=persona,
-            is_active=True
+            is_active=True,
         )
         
         # Register signer with RISE
         try:
             await self.rise_client.register_signer(
                 account.private_key, 
-                account.signer_key
+                account.signer_key,
             )
         except Exception as e:
             print(f"Warning: Signer registration failed: {e}")
@@ -78,7 +78,7 @@ class AccountManager:
             risk_tolerance=0.3,
             favorite_assets=["BTC", "ETH"],
             personality_traits=["cautious", "analytical", "patient"],
-            sample_posts=["Testing the markets", "Learning about crypto trading"]
+            sample_posts=["Testing the markets", "Learning about crypto trading"],
         )
         
         # Create account
@@ -88,14 +88,14 @@ class AccountManager:
             private_key=eth_account.key.hex(),
             signer_key=signer_account.key.hex(),
             persona=test_persona,
-            is_active=True
+            is_active=True,
         )
         
         # Register signer with RISE
         try:
             await self.rise_client.register_signer(
                 account.private_key, 
-                account.signer_key
+                account.signer_key,
             )
         except Exception as e:
             print(f"Warning: Signer registration failed: {e}")
@@ -109,11 +109,11 @@ class AccountManager:
         """Get account by ID."""
         return self.storage.get_account(account_id)
     
-    async def list_accounts(self) -> List[Account]:
+    async def list_accounts(self) -> list[Account]:
         """List all accounts."""
         return self.storage.list_accounts()
     
-    async def update_persona(self, account_id: str, posts: List[str]) -> Optional[Persona]:
+    async def update_persona(self, account_id: str, posts: list[str]) -> Optional[Persona]:
         """Update account persona with fresh posts."""
         account = self.storage.get_account(account_id)
         if not account or not account.persona:
@@ -123,7 +123,7 @@ class AccountManager:
         new_persona = await self.ai_client.create_persona_from_posts(
             account.persona.handle, 
             posts,
-            account.persona.bio
+            account.persona.bio,
         )
         
         # Update account
@@ -181,10 +181,10 @@ class AccountManager:
         return await self.create_account_with_persona(
             handle=handle,
             posts=profile_data["tweet_texts"],
-            bio=profile_data["bio"]
+            bio=profile_data["bio"],
         )
     
-    def get_mock_profiles(self) -> List[str]:
+    def get_mock_profiles(self) -> list[str]:
         """Get list of available mock profiles."""
         return self.mock_social.list_profiles()
     

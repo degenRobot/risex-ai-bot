@@ -2,11 +2,9 @@
 """Start both API server and trading bot for production deployment."""
 
 import asyncio
+import logging
 import os
 import sys
-import signal
-import logging
-from concurrent.futures import ThreadPoolExecutor
 
 # Add project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -14,8 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
@@ -23,6 +21,7 @@ logger = logging.getLogger(__name__)
 def run_api_server():
     """Run the FastAPI server."""
     import uvicorn
+
     from app.api.server import app
     
     port = int(os.environ.get("PORT", "8080"))
@@ -35,7 +34,7 @@ def run_api_server():
         host=host,
         port=port,
         access_log=True,
-        log_level="info"
+        log_level="info",
     )
 
 
@@ -66,7 +65,7 @@ async def run_trading_bot():
             return
         
         logger.info(f"✅ Bot initialized with {len(executor.active_profiles)} active profiles")
-        logger.info(f"📡 Market data updates every 30 seconds")
+        logger.info("📡 Market data updates every 30 seconds")
         logger.info(f"🔄 Trading cycles every {interval} seconds")
         
         # Main loop

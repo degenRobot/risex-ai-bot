@@ -4,9 +4,10 @@ Test profile creation and management via admin API.
 """
 
 import asyncio
-import httpx
 import os
 from datetime import datetime
+
+import httpx
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -49,7 +50,7 @@ async def test_profile_creation():
                 "personality_type": "cynical",
                 "initial_deposit": 50.0,
                 "favorite_assets": ["BTC"],
-                "personality_traits": ["pessimistic", "cautious", "analytical"]
+                "personality_traits": ["pessimistic", "cautious", "analytical"],
             },
             {
                 "name": "Left Curve Degen",
@@ -60,7 +61,7 @@ async def test_profile_creation():
                 "personality_type": "leftCurve",
                 "initial_deposit": 100.0,
                 "favorite_assets": ["BTC", "ETH"],
-                "personality_traits": ["impulsive", "excited", "simple"]
+                "personality_traits": ["impulsive", "excited", "simple"],
             },
             {
                 "name": "Midwit Momentum Trader",
@@ -71,8 +72,8 @@ async def test_profile_creation():
                 "personality_type": "midwit",
                 "initial_deposit": 75.0,
                 "favorite_assets": ["BTC", "ETH"],
-                "personality_traits": ["verbose", "trend-following", "overconfident"]
-            }
+                "personality_traits": ["verbose", "trend-following", "overconfident"],
+            },
         ]
         
         created_profiles = []
@@ -87,27 +88,27 @@ async def test_profile_creation():
                 response = await client.post(
                     f"{BASE_URL}/api/admin/profiles",
                     headers=headers,
-                    json=profile_data
+                    json=profile_data,
                 )
                 
                 if response.status_code == 200:
                     data = response.json()
                     created_profiles.append(data)
                     
-                    print(f"✅ Profile created successfully!")
+                    print("✅ Profile created successfully!")
                     print(f"   ID: {data['profile_id']}")
                     print(f"   Address: {data['address']}")
                     print(f"   Signer: {data['signer_address']}")
                     print(f"   Message: {data['message']}")
                     
                     # Test chat with new profile
-                    print(f"\n💬 Testing chat with new profile...")
+                    print("\n💬 Testing chat with new profile...")
                     chat_response = await client.post(
                         f"{BASE_URL}/api/profiles/{data['profile_id']}/chat",
                         json={
                             "message": "Hey! What do you think about Bitcoin right now?",
-                            "chatHistory": ""
-                        }
+                            "chatHistory": "",
+                        },
                     )
                     
                     if chat_response.status_code == 200:
@@ -136,7 +137,7 @@ async def test_profile_creation():
             print("\n📋 Verifying with admin list...")
             list_response = await client.get(
                 f"{BASE_URL}/api/admin/profiles",
-                headers=headers
+                headers=headers,
             )
             
             if list_response.status_code == 200:
@@ -144,10 +145,10 @@ async def test_profile_creation():
                 print(f"✅ Total profiles in system: {all_profiles['total']}")
                 
                 # Find our new profiles
-                new_profile_ids = [p['profile_id'] for p in created_profiles]
+                new_profile_ids = [p["profile_id"] for p in created_profiles]
                 found = 0
-                for profile in all_profiles['profiles']:
-                    if profile['id'] in new_profile_ids:
+                for profile in all_profiles["profiles"]:
+                    if profile["id"] in new_profile_ids:
                         found += 1
                 
                 print(f"✅ Verified {found}/{len(created_profiles)} new profiles in list")
@@ -170,7 +171,7 @@ async def test_profile_operations():
         # Get list of profiles
         response = await client.get(
             f"{BASE_URL}/api/admin/profiles",
-            headers=headers
+            headers=headers,
         )
         
         if response.status_code != 200:
@@ -193,7 +194,7 @@ async def test_profile_operations():
         print("\n💰 Checking balance...")
         balance_response = await client.get(
             f"{BASE_URL}/api/admin/profiles/{profile_id}/balance",
-            headers=headers
+            headers=headers,
         )
         
         if balance_response.status_code == 200:
@@ -207,14 +208,14 @@ async def test_profile_operations():
         print("\n📊 Checking positions...")
         positions_response = await client.get(
             f"{BASE_URL}/api/admin/profiles/{profile_id}/positions",
-            headers=headers
+            headers=headers,
         )
         
         if positions_response.status_code == 200:
             positions_data = positions_response.json()
             print(f"✅ Total position value: ${positions_data['total_value']}")
-            if positions_data['positions']:
-                for market, pos in positions_data['positions'].items():
+            if positions_data["positions"]:
+                for market, pos in positions_data["positions"].items():
                     print(f"   {market}: {pos}")
             else:
                 print("   No open positions")

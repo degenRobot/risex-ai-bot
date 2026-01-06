@@ -278,6 +278,17 @@ account_info = await rise_client.get_account(main_address)
 
 ### 5. Profile Creation
 
+#### Enhanced Profile Factory (Phase B/C Updates)
+
+The profile creation process now uses a centralized factory with enhanced features:
+
+**Key Improvements:**
+- ✅ Automated retry logic for deposits
+- ✅ Initial equity tracking for P&L calculations
+- ✅ Better error handling and recovery
+- ✅ WebSocket event publishing
+- ✅ Validation and safety checks
+
 #### Option A: Manual Creation (Advanced)
 
 ```python
@@ -315,12 +326,47 @@ account = Account(
 storage.save_account(account)
 ```
 
-#### Option B: Admin API (Recommended)
+#### Option B: Profile Factory (New Recommended Approach)
 
-Use the automated profile creation endpoint that handles everything:
+Using the enhanced ProfileFactory for programmatic creation:
+
+```python
+from app.profiles.factory import ProfileFactory
+
+factory = ProfileFactory()
+
+# Create profile with automatic setup
+result = await factory.create_profile(
+    name="Market Maven",
+    handle="market_maven_2025",
+    bio="Technical analysis expert",
+    trading_style="momentum",
+    risk_tolerance=0.6,
+    personality_type="cynical",
+    initial_deposit=100.0,
+    favorite_assets=["BTC", "ETH", "SOL"],
+    personality_traits=["analytical", "patient"]
+)
+
+print(f"Profile created: {result['profile_id']}")
+print(f"Initial equity: ${result.get('initial_equity', 0):.2f}")
+```
+
+**Factory Features:**
+- Generates secure key pairs
+- Registers signer with retry logic
+- Deposits USDC with automatic retry on failure
+- Fetches initial equity for P&L tracking
+- Saves profile with all metadata
+
+#### Option C: Admin API (Currently Disabled)
+
+**NOTE**: Profile creation via API is temporarily disabled during system refactoring (returns HTTP 501).
+Use Options A or B for creating new profiles.
 
 **API Endpoint**: `POST /api/admin/profiles`  
-**Authentication**: Requires `X-API-Key` header with `ADMIN_API_KEY`
+**Authentication**: Requires `X-API-Key` header with `ADMIN_API_KEY`  
+**Status**: Currently returns 501 Not Implemented
 
 ```bash
 curl -X POST "https://risex-trading-bot.fly.dev/api/admin/profiles" \
@@ -354,7 +400,7 @@ curl -X POST "https://risex-trading-bot.fly.dev/api/admin/profiles" \
 **Trading Styles**: `aggressive`, `conservative`, `contrarian`, `momentum`, `degen`  
 **Personality Types**: `cynical`, `leftCurve`, `midwit`
 
-#### Option C: Grok-Enhanced Profile Creation
+#### Option D: Grok-Enhanced Profile Creation
 
 Combine Grok persona extraction with API creation:
 

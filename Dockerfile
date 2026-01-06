@@ -56,24 +56,42 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # Create entrypoint script to handle data initialization
 RUN echo '#!/bin/bash\n\
-# Initialize data directory structure\n\
-if [ ! -f /data/accounts.json ]; then\n\
-    echo "Initializing empty data directory..."\n\
-    echo "{}" > /data/accounts.json\n\
-    echo "{}" > /data/trading_decisions.json\n\
-    echo "{}" > /data/thought_processes.json\n\
-    echo "{}" > /data/chat_sessions.json\n\
-    echo "{}" > /data/equity_snapshots.json\n\
-    echo "{}" > /data/pending_actions.json\n\
-    # Copy markets.json if it exists in app directory\n\
-    if [ -f /app/data/markets.json ]; then\n\
-        cp /app/data/markets.json /data/\n\
-    else\n\
-        echo "{}" > /data/markets.json\n\
+# Handle persistent data directory\n\
+echo "Checking persistent data directory..."\n\
+\n\
+# Initialize empty files only if they dont exist (preserve existing data)\n\
+for file in trading_decisions.json thought_processes.json chat_sessions.json equity_snapshots.json pending_actions.json positions.json profile_updates.json trading_data.json chat_influence_results.json; do\n\
+    if [ ! -f /data/$file ]; then\n\
+        echo "{}" > /data/$file\n\
+        echo "Created empty $file"\n\
     fi\n\
-    echo "Data initialization complete."\n\
+done\n\
+\n\
+# Special handling for accounts.json\n\
+if [ ! -f /data/accounts.json ]; then\n\
+    echo "No accounts.json found in persistent storage"\n\
+    if [ -f /app/data/accounts_deployment.json ]; then\n\
+        echo "Using deployment accounts (4 personas)"\n\
+        cp /app/data/accounts_deployment.json /data/accounts.json\n\
+    else\n\
+        echo "{}" > /data/accounts.json\n\
+    fi\n\
 else\n\
-    echo "Data directory already initialized, skipping."\n\
+    echo "Using existing accounts.json from persistent storage"\n\
+    # Check if we need to update personas (deployment flag)\n\
+    if [ "$RESET_PERSONAS" = "true" ] && [ -f /app/data/accounts_deployment.json ]; then\n\
+        echo "RESET_PERSONAS=true - Replacing with deployment accounts"\n\
+        cp /data/accounts.json /data/accounts_backup_$(date +%s).json\n\
+        cp /app/data/accounts_deployment.json /data/accounts.json\n\
+    fi\n\
+fi\n\
+\n\
+# Markets data - always use latest if available\n\
+if [ -f /app/data/markets.json ]; then\n\
+    cp /app/data/markets.json /data/\n\
+    echo "Updated markets.json with latest data"\n\
+elif [ ! -f /data/markets.json ]; then\n\
+    echo "{}" > /data/markets.json\n\
 fi\n\
 \n\
 # Start the application\n\

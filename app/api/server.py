@@ -1,19 +1,20 @@
 """FastAPI server for RISE AI Trading Bot."""
 
-from fastapi import FastAPI, HTTPException
+import logging
+import os
+from typing import Any, Optional
+
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
-from fastapi import Query
-import logging
 
-from ..services.storage import JSONStorage
-from ..services.profile_chat import ProfileChatService
-from ..services.equity_monitor import get_equity_monitor
-from ..services.async_data_manager import AsyncDataManager
-from ..models import Account
 from ..pending_actions import ActionStatus
+from ..services.equity_monitor import get_equity_monitor
+from ..services.profile_chat import ProfileChatService
+from ..services.storage import JSONStorage
 from .profile_manager import router as admin_router
+
+# from ..chat import chat_store, context_builder, streaming_handler  # Removed module
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="RISE AI Trading Bot API",
     description="API for managing AI trading profiles on RISE testnet",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # CORS middleware
@@ -47,6 +48,11 @@ active_traders = {}
 # Include admin router
 app.include_router(admin_router)
 
+# Include WebSocket router for realtime events
+from ..realtime.ws import router as websocket_router
+
+app.include_router(websocket_router)
+
 
 # Application startup
 @app.on_event("startup")
@@ -65,6 +71,26 @@ async def startup():
             logger.info("All data files are valid")
     except Exception as e:
         logger.error(f"Failed to validate data files: {e}")
+    
+    # Special check for empty accounts.json on deployment
+    accounts = storage.get_all_accounts()
+    if not accounts:
+        logger.warning("No accounts found in accounts.json")
+        # Check if we're on Fly.io and have deployment accounts
+        if os.environ.get("FLY_APP_NAME") and os.path.exists("/app/data/accounts_deployment.json"):
+            logger.info("Loading deployment accounts on Fly.io...")
+            try:
+                import json
+                with open("/app/data/accounts_deployment.json", "r") as f:
+                    deployment_accounts = json.load(f)
+                
+                # Save each account
+                for account_id, account_data in deployment_accounts.items():
+                    storage.save_account(account_id, account_data)
+                
+                logger.info(f"Loaded {len(deployment_accounts)} deployment accounts")
+            except Exception as e:
+                logger.error(f"Failed to load deployment accounts: {e}")
     
     logger.info("API startup complete")
 
@@ -86,18 +112,33 @@ class ProfileSummary(BaseModel):
 class ChatRequest(BaseModel):
     """Chat request model."""
     message: str
-    chatHistory: Optional[str] = ""
+    chatHistory: Optional[str] = ""  # Deprecated, kept for backward compatibility
     sessionId: Optional[str] = None
+    user_id: Optional[str] = None  # For message deduplication
+    stream: bool = False  # Whether to use streaming response
 
 
 class ChatResponse(BaseModel):
     """Chat response model."""
     response: str
-    chatHistory: str
-    profileUpdates: List[str] = []
-    sessionId: str
-    context: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+    chatHistory: str  # Deprecated, kept for backward compatibility
+    message_id: Optional[str] = None  # ID of the assistant's response
+    profileUpdates: Optional[list] = None  # Can be list of strings or dicts
+    sessionId: Optional[str] = None
+    context: Optional[dict] = None
+
+
+class ChatHistoryRequest(BaseModel):
+    """Request for chat history."""
+    limit: int = 50
+    after_id: Optional[str] = None
+
+
+class ChatHistoryResponse(BaseModel):
+    """Response with chat history."""
+    messages: list[dict[str, Any]]
+    total: int
+    has_more: bool
 
 
 class ProfileDetail(BaseModel):
@@ -108,12 +149,12 @@ class ProfileDetail(BaseModel):
     bio: str
     trading_style: str
     risk_tolerance: float
-    personality_traits: List[str]
+    personality_traits: list[str]
     is_trading: bool
     account_address: str
-    positions: List[Dict[str, Any]]  # Current open positions from RISE API
-    pending_actions: List[Dict[str, Any]]  # Conditional orders (stop loss, take profit)
-    recent_trades: List[Dict[str, Any]]
+    positions: list[dict[str, Any]]  # Current open positions from RISE API
+    pending_actions: list[dict[str, Any]]  # Conditional orders (stop loss, take profit)
+    recent_trades: list[dict[str, Any]]
     total_pnl: float
     win_rate: Optional[float]
 
@@ -122,12 +163,12 @@ class ActionResponse(BaseModel):
     """Response for action operations."""
     success: bool
     message: str
-    data: Optional[Dict[str, Any]] = None
+    data: Optional[dict[str, Any]] = None
 
 
 class ProfilesResponse(BaseModel):
     """Paginated profiles response."""
-    profiles: List[ProfileSummary]
+    profiles: list[ProfileSummary]
     total: int
     page: int
     limit: int
@@ -141,7 +182,7 @@ async def root():
         "name": "RISE AI Trading Bot API",
         "version": "1.0.0",
         "status": "operational",
-        "docs": "/docs"
+        "docs": "/docs",
     }
 
 
@@ -154,20 +195,20 @@ async def health_check():
         return {
             "status": "healthy",
             "accounts": len(accounts),
-            "storage": "connected"
+            "storage": "connected",
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         return {
             "status": "unhealthy",
-            "error": str(e)
+            "error": str(e),
         }
 
 
 @app.get("/api/profiles", response_model=ProfilesResponse)
 async def list_profiles(
     page: int = Query(1, ge=1, description="Page number"),
-    limit: int = Query(20, ge=1, le=100, description="Items per page")
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
 ):
     """List all trading profiles with pagination."""
     try:
@@ -190,10 +231,14 @@ async def list_profiles(
                 is_trading = account.id in active_traders
                 
                 # Get basic stats
-                positions = []  # Would be fetched from RISE API
+                # Get positions from stored account data (saved by equity monitor)
+                all_accounts = storage.get_all_accounts()
+                stored_account = all_accounts.get(account.id, {})
+                positions = stored_account.get("positions", [])
+                
                 pending_actions = storage.get_pending_actions(
                     account.id, 
-                    status=ActionStatus.PENDING
+                    status=ActionStatus.PENDING,
                 )
                 
                 # Get current equity from on-chain
@@ -203,7 +248,7 @@ async def list_profiles(
                     current_equity = await equity_monitor.fetch_equity(account.address)
                     if current_equity is not None:
                         # Use the actual deposit amount if available, otherwise use default
-                        initial_deposit = getattr(account, 'deposit_amount', DEFAULT_INITIAL_DEPOSIT) or DEFAULT_INITIAL_DEPOSIT
+                        initial_deposit = getattr(account, "deposit_amount", DEFAULT_INITIAL_DEPOSIT) or DEFAULT_INITIAL_DEPOSIT
                         net_pnl = current_equity - initial_deposit
                 except Exception as e:
                     logger.warning(f"Could not fetch equity for {account.address}: {e}")
@@ -222,7 +267,7 @@ async def list_profiles(
                     net_pnl=net_pnl,
                     current_equity=current_equity,
                     position_count=len(positions),
-                    pending_actions=len(pending_actions)
+                    pending_actions=len(pending_actions),
                 ))
         
         # Apply pagination
@@ -236,7 +281,7 @@ async def list_profiles(
             total=total,
             page=page,
             limit=limit,
-            has_more=end_idx < total
+            has_more=end_idx < total,
         )
         
     except Exception as e:
@@ -244,7 +289,7 @@ async def list_profiles(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/profiles/all", response_model=List[ProfileSummary])
+@app.get("/api/profiles/all", response_model=list[ProfileSummary])
 async def list_all_profiles():
     """List all trading profiles without pagination (backward compatibility)."""
     try:
@@ -278,7 +323,7 @@ async def get_profile(handle: str):
         # Get pending actions
         pending_actions = storage.get_pending_actions(
             account.id,
-            status=ActionStatus.PENDING
+            status=ActionStatus.PENDING,
         )
         pending_summary = []
         for action in pending_actions:
@@ -288,7 +333,7 @@ async def get_profile(handle: str):
                 "condition": f"{action.condition.field} {action.condition.operator.value} {action.condition.value}",
                 "market": action.action_params.market,
                 "created_at": action.created_at.isoformat(),
-                "description": f"{action.action_type.value.replace('_', ' ').title()} for {action.action_params.market} when {action.condition.field} {action.condition.operator.value} {action.condition.value}"
+                "description": f"{action.action_type.value.replace('_', ' ').title()} for {action.action_params.market} when {action.condition.field} {action.condition.operator.value} {action.condition.value}",
             }
             pending_summary.append(action_summary)
         
@@ -298,13 +343,13 @@ async def get_profile(handle: str):
         for trade in trades:
             recent_trades.append({
                 "id": trade.id,
-                "market": getattr(trade, 'market', 'Unknown'),
+                "market": getattr(trade, "market", "Unknown"),
                 "side": trade.side,
                 "size": trade.size,
                 "price": trade.price,
                 "reasoning": trade.reasoning,
                 "timestamp": trade.timestamp.isoformat(),
-                "status": trade.status
+                "status": trade.status,
             })
         
         # Calculate analytics
@@ -329,7 +374,7 @@ async def get_profile(handle: str):
             pending_actions=pending_summary,
             recent_trades=recent_trades,
             total_pnl=analytics.get("avg_session_pnl", 0) * analytics.get("total_sessions", 0),
-            win_rate=analytics.get("win_rate")
+            win_rate=analytics.get("win_rate"),
         )
         
     except HTTPException:
@@ -358,7 +403,7 @@ async def start_trading(handle: str):
         if account.id in active_traders:
             return ActionResponse(
                 success=False,
-                message="Profile is already trading"
+                message="Profile is already trading",
             )
         
         # Mark as active (actual bot process handles trading)
@@ -367,7 +412,7 @@ async def start_trading(handle: str):
         return ActionResponse(
             success=True,
             message=f"Trading started for {handle}",
-            data={"account_id": account.id}
+            data={"account_id": account.id},
         )
         
     except HTTPException:
@@ -396,7 +441,7 @@ async def stop_trading(handle: str):
         if account.id not in active_traders:
             return ActionResponse(
                 success=False,
-                message="Profile is not currently trading"
+                message="Profile is not currently trading",
             )
         
         # Mark as inactive
@@ -404,7 +449,7 @@ async def stop_trading(handle: str):
         
         return ActionResponse(
             success=True,
-            message=f"Trading stopped for {handle}"
+            message=f"Trading stopped for {handle}",
         )
         
     except HTTPException:
@@ -443,12 +488,12 @@ async def get_pending_actions(handle: str):
                     "field": action.condition.field,
                     "operator": action.condition.operator.value,
                     "value": action.condition.value,
-                    "market": action.condition.market
+                    "market": action.condition.market,
                 },
                 "params": action.action_params.model_dump(),
                 "created_at": action.created_at.isoformat(),
                 "expires_at": action.expires_at.isoformat() if action.expires_at else None,
-                "reasoning": action.reasoning
+                "reasoning": action.reasoning,
             })
         
         return {"actions": result}
@@ -487,18 +532,18 @@ async def cancel_action(handle: str, action_id: str):
         # Cancel action
         success = storage.update_pending_action_status(
             action_id, 
-            ActionStatus.CANCELLED
+            ActionStatus.CANCELLED,
         )
         
         if success:
             return ActionResponse(
                 success=True,
-                message=f"Action {action_id} cancelled"
+                message=f"Action {action_id} cancelled",
             )
         else:
             return ActionResponse(
                 success=False,
-                message="Failed to cancel action"
+                message="Failed to cancel action",
             )
         
     except HTTPException:
@@ -510,7 +555,7 @@ async def cancel_action(handle: str, action_id: str):
 
 @app.post("/api/profiles/{account_id}/chat", response_model=ChatResponse)
 async def chat_with_profile(account_id: str, chat_request: ChatRequest):
-    """Chat with a specific AI trading profile.
+    """Chat with a specific AI trading profile using server-side history.
     
     This endpoint allows users to have conversations with AI traders.
     The AI can update its market outlook, trading bias, and personality
@@ -519,13 +564,24 @@ async def chat_with_profile(account_id: str, chat_request: ChatRequest):
     Example conversation:
     - User: "Fed is going to drop rates, BTC will pump!"
     - AI: "That's bullish! I should reconsider my short position..."
+    
+    New features:
+    - Server-side chat history (no need to send chatHistory)
+    - Streaming responses (set stream=true)
+    - Message deduplication (provide user_id)
     """
     try:
+        # Check if account exists
+        account = storage.get_account(account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        # Chat module removed - use existing chat service
         result = await chat_service.chat_with_profile(
             account_id=account_id,
             user_message=chat_request.message,
-            chat_history=chat_request.chatHistory,
-            user_session_id=chat_request.sessionId
+            chat_history=[],  # Server-side history not available
+            user_session_id=chat_request.sessionId,
         )
         
         if "error" in result:
@@ -533,17 +589,87 @@ async def chat_with_profile(account_id: str, chat_request: ChatRequest):
         
         return ChatResponse(
             response=result["response"],
-            chatHistory=result["chatHistory"],
+            chatHistory="",  # Server-side history not available
+            message_id=None,
             profileUpdates=result.get("profileUpdates", []),
-            sessionId=result["sessionId"],
-            context=result.get("context")
+            sessionId=result.get("sessionId", chat_request.sessionId or account_id),
+            context=result.get("tradingContext", {}),
         )
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error in chat with profile {account_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Chat error: {e!s}")
+
+
+# Chat history endpoint disabled - chat module removed
+# @app.get("/api/profiles/{account_id}/chat/history", response_model=ChatHistoryResponse)
+async def get_chat_history_disabled(
+    account_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    after_id: Optional[str] = Query(None),
+):
+    """Chat history endpoint disabled during refactoring."""
+    raise HTTPException(status_code=501, detail="Chat history temporarily disabled")
+    try:
+        # Check if account exists
+        account = storage.get_account(account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        # Load messages
+        messages = []  # await chat_store.load_recent()  # Disabled
+        
+        # Convert to response format
+        message_list = []
+        for msg in messages:
+            message_list.append({
+                "id": msg.message_id,
+                "role": msg.role,
+                "content": msg.content,
+                "author": msg.author,
+                "timestamp": msg.timestamp.isoformat(),
+                "metadata": msg.metadata,
+            })
+        
+        # Get total count
+        total_count = 0  # await chat_store.get_message_count(account_id)  # Disabled
+        
+        return ChatHistoryResponse(
+            messages=message_list,
+            total=total_count,
+            has_more=len(messages) == limit,  # If we got full limit, there might be more
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting chat history for {account_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Chat clear endpoint disabled - chat module removed  
+# @app.delete("/api/profiles/{account_id}/chat/history")
+async def clear_chat_history_disabled(account_id: str):
+    """Chat clear endpoint disabled during refactoring."""
+    raise HTTPException(status_code=501, detail="Chat clear temporarily disabled")
+    try:
+        # Check if account exists
+        account = storage.get_account(account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        # Clear history
+        # await chat_store.clear_chat(account_id)  # Disabled
+        
+        return {"message": f"Chat history cleared for profile {account_id}"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error clearing chat history for {account_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/profiles/{account_id}/summary")
@@ -588,7 +714,7 @@ async def get_profile_context(account_id: str):
             "profile_id": account_id,
             "profile_name": account.persona.name if account.persona else account.address[:8],
             "trading_context": context,
-            "timestamp": context.get("timestamp")
+            "timestamp": context.get("timestamp"),
         }
         
     except HTTPException:
@@ -620,7 +746,7 @@ async def chat_with_profile_v2(account_id: str, chat_request: ChatRequest):
             account_id=account_id,
             user_message=chat_request.message,
             chat_history=chat_request.chatHistory,
-            user_session_id=chat_request.sessionId
+            user_session_id=chat_request.sessionId,
         )
         
         if "error" in result:
@@ -631,7 +757,7 @@ async def chat_with_profile_v2(account_id: str, chat_request: ChatRequest):
             chatHistory=result["chatHistory"],
             profileUpdates=result.get("profileUpdates", []),
             sessionId=result["sessionId"],
-            context=result.get("context", {})
+            context=result.get("context", {}),
         )
         
     except HTTPException:
@@ -667,7 +793,7 @@ async def get_profile_summary_v2(account_id: str):
 
 # Admin endpoints
 @app.patch("/api/admin/accounts/{account_id}")
-async def update_account_data(account_id: str, updates: Dict):
+async def update_account_data(account_id: str, updates: dict):
     """Update account data (admin endpoint).
     
     Allows updating deposit_amount and other account fields.
@@ -718,7 +844,7 @@ async def get_trading_signals(account_id: str, limit: int = 10):
         recent_thoughts = await thought_manager.get_recent(
             account_id=account_id,
             limit=limit,
-            purpose="trading_decision"
+            purpose="trading_decision",
         )
         
         # Get trading decisions
@@ -739,7 +865,7 @@ async def get_trading_signals(account_id: str, limit: int = 10):
                 "reason": decision.get("reasoning", "No reason provided"),
                 "created_at": decision.get("timestamp"),
                 "status": "executed" if decision.get("executed") else "analyzed",
-                "result": decision.get("result")
+                "result": decision.get("result"),
             }
             signals.append(signal)
         
@@ -755,7 +881,7 @@ async def get_trading_signals(account_id: str, limit: int = 10):
                     "confidence": content.get("confidence", 0.5),
                     "reason": content.get("analysis", "Market analysis in progress"),
                     "created_at": thought.get("timestamp"),
-                    "status": "analyzing"
+                    "status": "analyzing",
                 }
                 signals.append(signal)
         
@@ -765,7 +891,7 @@ async def get_trading_signals(account_id: str, limit: int = 10):
         return {
             "account_id": account_id,
             "signals": signals[:limit],
-            "total_signals": len(signals)
+            "total_signals": len(signals),
         }
         
     except HTTPException:
@@ -802,8 +928,8 @@ async def get_trading_activity(account_id: str, hours: int = 24):
                         "side": trade.side,
                         "size": trade.size,
                         "price": trade.price,
-                        "status": trade.status
-                    }
+                        "status": trade.status,
+                    },
                 }
                 activities.append(activity)
         
@@ -819,8 +945,8 @@ async def get_trading_activity(account_id: str, hours: int = 24):
                 "details": {
                     "equity": snapshot["equity"],
                     "free_margin": snapshot.get("free_margin"),
-                    "positions_count": snapshot.get("positions_count", 0)
-                }
+                    "positions_count": snapshot.get("positions_count", 0),
+                },
             }
             activities.append(activity)
         
@@ -829,7 +955,7 @@ async def get_trading_activity(account_id: str, hours: int = 24):
         thought_manager = ThoughtProcessManager()
         recent_thoughts = await thought_manager.get_recent(
             account_id=account_id,
-            limit=20
+            limit=20,
         )
         
         for thought in recent_thoughts:
@@ -841,7 +967,7 @@ async def get_trading_activity(account_id: str, hours: int = 24):
                         "type": "chat_influence",
                         "action": f"Updated {content.get('asset', 'market')} outlook: {content.get('outlook', 'Unknown')}",
                         "timestamp": thought["timestamp"],
-                        "details": content
+                        "details": content,
                     }
                     activities.append(activity)
                 elif thought["entry_type"] == "market_analysis":
@@ -849,7 +975,7 @@ async def get_trading_activity(account_id: str, hours: int = 24):
                         "type": "market_analysis",
                         "action": content.get("analysis", "Analyzed market conditions"),
                         "timestamp": thought["timestamp"],
-                        "details": content
+                        "details": content,
                     }
                     activities.append(activity)
         
@@ -866,7 +992,7 @@ async def get_trading_activity(account_id: str, hours: int = 24):
             "last_activity": last_activity,
             "activities": activities[:50],  # Limit to 50 most recent
             "total_activities": len(activities),
-            "time_range_hours": hours
+            "time_range_hours": hours,
         }
         
     except HTTPException:

@@ -1,13 +1,13 @@
 """OpenRouter AI client for trading persona generation and decisions."""
 
 import json
-from typing import Dict, List, Optional
+from typing import Optional
 
 import httpx
 from openai import AsyncOpenAI
 
 from ..config import settings
-from ..models import Persona, TradeDecision, TradingStyle, TradingDecisionLog
+from ..models import Persona, TradeDecision, TradingDecisionLog, TradingStyle
 
 
 class AIClientError(Exception):
@@ -30,12 +30,12 @@ class AIClient:
         if self.api_key:
             self.client = AsyncOpenAI(
                 api_key=self.api_key,
-                base_url=self.base_url
+                base_url=self.base_url,
             )
         else:
             self.client = None
     
-    async def _chat_completion(self, messages: List[Dict], json_mode: bool = False) -> str:
+    async def _chat_completion(self, messages: list[dict], json_mode: bool = False) -> str:
         """Send chat completion request to OpenRouter."""
         if not self.api_key:
             raise AIClientError("OpenRouter API key not configured")
@@ -59,7 +59,7 @@ class AIClient:
             else:
                 messages.insert(0, {
                     "role": "system", 
-                    "content": "You are a helpful assistant. Respond ONLY with valid JSON."
+                    "content": "You are a helpful assistant. Respond ONLY with valid JSON.",
                 })
         
         async with httpx.AsyncClient() as client:
@@ -68,7 +68,7 @@ class AIClient:
                     f"{self.base_url}/chat/completions",
                     headers=headers,
                     json=payload,
-                    timeout=30.0
+                    timeout=30.0,
                 )
                 response.raise_for_status()
                 
@@ -84,13 +84,13 @@ class AIClient:
                     pass
                 raise AIClientError(error_msg, e.response.status_code)
             except Exception as e:
-                raise AIClientError(f"Request failed: {str(e)}")
+                raise AIClientError(f"Request failed: {e!s}")
     
     async def create_persona_from_posts(
         self, 
         handle: str, 
-        posts: List[str], 
-        bio: str = ""
+        posts: list[str], 
+        bio: str = "",
     ) -> Persona:
         """Generate a trading persona from social media posts."""
         
@@ -123,17 +123,17 @@ Base the persona on their communication style, interests, risk appetite, and mar
         messages = [
             {
                 "role": "system", 
-                "content": "You are an expert at analyzing social media profiles to create trading personas. Always respond with valid JSON only."
+                "content": "You are an expert at analyzing social media profiles to create trading personas. Always respond with valid JSON only.",
             },
-            {"role": "user", "content": prompt}
+            {"role": "user", "content": prompt},
         ]
         
         response = await self._chat_completion(messages, json_mode=True)
         
         try:
             # Clean response to ensure valid JSON
-            json_start = response.find('{')
-            json_end = response.rfind('}') + 1
+            json_start = response.find("{")
+            json_end = response.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
                 response = response[json_start:json_end]
             
@@ -147,7 +147,7 @@ Base the persona on their communication style, interests, risk appetite, and mar
                 risk_tolerance=float(data["risk_tolerance"]),
                 favorite_assets=data["favorite_assets"],
                 personality_traits=data["personality_traits"],
-                sample_posts=recent_posts[:5]  # Store sample posts
+                sample_posts=recent_posts[:5],  # Store sample posts
             )
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             raise AIClientError(f"Failed to parse persona JSON: {e}")
@@ -155,9 +155,9 @@ Base the persona on their communication style, interests, risk appetite, and mar
     async def get_trade_decision(
         self,
         persona: Persona,
-        market_data: Dict,
-        current_positions: Dict,
-        available_balance: float
+        market_data: dict,
+        current_positions: dict,
+        available_balance: float,
     ) -> TradeDecision:
         """Get AI trading decision based on persona and market conditions."""
         
@@ -208,17 +208,17 @@ Only trade if you have strong conviction. Stay in character.
         messages = [
             {
                 "role": "system", 
-                "content": f"You are {persona.name}, a crypto trader with {persona.trading_style.value} style. Make trading decisions in character. Always respond with valid JSON only."
+                "content": f"You are {persona.name}, a crypto trader with {persona.trading_style.value} style. Make trading decisions in character. Always respond with valid JSON only.",
             },
-            {"role": "user", "content": prompt}
+            {"role": "user", "content": prompt},
         ]
         
         response = await self._chat_completion(messages, json_mode=True)
         
         try:
             # Clean and parse JSON
-            json_start = response.find('{')
-            json_end = response.rfind('}') + 1
+            json_start = response.find("{")
+            json_end = response.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
                 response = response[json_start:json_end]
             
@@ -234,12 +234,12 @@ Only trade if you have strong conviction. Stay in character.
                 market=data.get("market"),
                 size_percent=size_percent,
                 confidence=confidence,
-                reasoning=data["reasoning"]
+                reasoning=data["reasoning"],
             )
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             raise AIClientError(f"Failed to parse trade decision JSON: {e}")
     
-    async def analyze_market_sentiment(self, recent_posts: List[str]) -> Dict[str, float]:
+    async def analyze_market_sentiment(self, recent_posts: list[str]) -> dict[str, float]:
         """Analyze market sentiment from recent social media posts."""
         if not recent_posts:
             return {"bullish": 0.5, "bearish": 0.5, "neutral": 0.5}
@@ -264,13 +264,13 @@ Base your analysis on mentions of crypto, market conditions, and general mood.
 
         messages = [
             {"role": "system", "content": "You are a market sentiment analyst. Respond with valid JSON only."},
-            {"role": "user", "content": prompt}
+            {"role": "user", "content": prompt},
         ]
         
         try:
             response = await self._chat_completion(messages, json_mode=True)
-            json_start = response.find('{')
-            json_end = response.rfind('}') + 1
+            json_start = response.find("{")
+            json_end = response.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
                 response = response[json_start:json_end]
             
@@ -282,11 +282,11 @@ Base your analysis on mentions of crypto, market conditions, and general mood.
     async def get_enhanced_trade_decision(
         self,
         persona: Persona,
-        market_data: Dict,
-        current_positions: Dict,
+        market_data: dict,
+        current_positions: dict,
         available_balance: float,
-        trading_history: List[TradingDecisionLog] = None,
-        recent_posts: List[str] = None
+        trading_history: list[TradingDecisionLog] = None,
+        recent_posts: list[str] = None,
     ) -> TradeDecision:
         """Get AI trading decision with historical context and learning."""
         
@@ -308,23 +308,23 @@ Base your analysis on mentions of crypto, market conditions, and general mood.
                 for trade in successful_trades[:3]:  # Top 3 successful trades
                     success_patterns.append(f"✅ {trade.decision.action} {trade.decision.market} at ${trade.market_context.btc_price if trade.decision.market == 'BTC' else trade.market_context.eth_price:,.0f} - Reason: {trade.decision.reasoning[:50]}... - Profit: ${trade.outcome_pnl:.2f}")
                 
-                history_insights += f"\nYOUR RECENT SUCCESSFUL TRADES:\n" + "\n".join(success_patterns)
+                history_insights += "\nYOUR RECENT SUCCESSFUL TRADES:\n" + "\n".join(success_patterns)
             
             if failed_trades:
                 failure_patterns = []
                 for trade in failed_trades[:2]:  # Top 2 failed trades for learning
                     failure_patterns.append(f"❌ {trade.decision.action} {trade.decision.market} at ${trade.market_context.btc_price if trade.decision.market == 'BTC' else trade.market_context.eth_price:,.0f} - Reason: {trade.decision.reasoning[:50]}... - Loss: ${trade.outcome_pnl:.2f}")
                 
-                history_insights += f"\n\nYOUR RECENT LOSSES (LEARN FROM THESE):\n" + "\n".join(failure_patterns)
+                history_insights += "\n\nYOUR RECENT LOSSES (LEARN FROM THESE):\n" + "\n".join(failure_patterns)
         
         # Analyze social sentiment if available
         sentiment_context = ""
         if recent_posts:
             try:
                 sentiment = await self.analyze_market_sentiment(recent_posts)
-                if sentiment['bullish'] > 0.6:
+                if sentiment["bullish"] > 0.6:
                     sentiment_context = "\nSOCIAL SENTIMENT: Bullish vibes in the community"
-                elif sentiment['bearish'] > 0.6:
+                elif sentiment["bearish"] > 0.6:
                     sentiment_context = "\nSOCIAL SENTIMENT: Bearish sentiment detected"
                 else:
                     sentiment_context = "\nSOCIAL SENTIMENT: Mixed/neutral sentiment"
@@ -374,17 +374,17 @@ Only trade if you have strong conviction. Learn from your past decisions.
         messages = [
             {
                 "role": "system", 
-                "content": f"You are {persona.name}, an experienced crypto trader who learns from past decisions. Make informed trading decisions based on your personality, market conditions, and trading history. Always respond with valid JSON only."
+                "content": f"You are {persona.name}, an experienced crypto trader who learns from past decisions. Make informed trading decisions based on your personality, market conditions, and trading history. Always respond with valid JSON only.",
             },
-            {"role": "user", "content": prompt}
+            {"role": "user", "content": prompt},
         ]
         
         response = await self._chat_completion(messages, json_mode=True)
         
         try:
             # Clean and parse JSON
-            json_start = response.find('{')
-            json_end = response.rfind('}') + 1
+            json_start = response.find("{")
+            json_end = response.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
                 response = response[json_start:json_end]
             
@@ -403,8 +403,8 @@ Only trade if you have strong conviction. Learn from your past decisions.
                 market=data.get("market"),
                 size_percent=size_percent,
                 confidence=confidence,
-                reasoning=data["reasoning"]
+                reasoning=data["reasoning"],
             )
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
+        except (json.JSONDecodeError, KeyError, ValueError):
             # Fall back to basic decision if enhanced version fails
             return await self.get_trade_decision(persona, market_data, current_positions, available_balance)

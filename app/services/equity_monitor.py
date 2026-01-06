@@ -4,13 +4,15 @@ import asyncio
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
-from web3 import AsyncWeb3, AsyncHTTPProvider
+from typing import Optional
+
+from web3 import AsyncHTTPProvider, AsyncWeb3
 from web3.exceptions import ContractLogicError
 
-from ..config import settings
-from .storage import JSONStorage
+from ..realtime.bus import publish_event
+from ..realtime.events import create_account_update
 from .rise_client import RiseClient
+from .storage import JSONStorage
 
 # Contract configuration
 PERPS_MANAGER_ADDRESS = "0x68cAcD54a8c93A3186BF50bE6b78B761F728E1b4"
@@ -22,15 +24,15 @@ PERPS_MANAGER_ABI = [
         "name": "getAccountEquity",
         "outputs": [{"name": "", "type": "int256"}],
         "stateMutability": "view",
-        "type": "function"
+        "type": "function",
     },
     {
         "inputs": [{"name": "account", "type": "address"}],
         "name": "getFreeCrossMarginBalance",
         "outputs": [{"name": "", "type": "uint256"}],
         "stateMutability": "view",
-        "type": "function"
-    }
+        "type": "function",
+    },
 ]
 
 
@@ -46,12 +48,12 @@ class EquityMonitor:
         # Contract setup
         self.perps_manager = self.w3.eth.contract(
             address=PERPS_MANAGER_ADDRESS,
-            abi=PERPS_MANAGER_ABI
+            abi=PERPS_MANAGER_ABI,
         )
         
         # Storage and cache
         self.storage = JSONStorage()
-        self.cache: Dict[str, Dict] = {}  # address -> {equity, timestamp, block}
+        self.cache: dict[str, dict] = {}  # address -> {equity, timestamp, block}
         
         # Configuration
         self.batch_size = int(os.getenv("EQUITY_BATCH_SIZE", "10"))
@@ -87,7 +89,7 @@ class EquityMonitor:
                 "equity": equity_usdc,
                 "timestamp": datetime.utcnow(),
                 "block_number": block["number"],
-                "raw_value": str(equity_raw)
+                "raw_value": str(equity_raw),
             }
             
             return equity_usdc
@@ -117,7 +119,7 @@ class EquityMonitor:
             self.logger.error(f"Failed to fetch equity for {address}: {e}")
             return None
     
-    async def fetch_equity_and_margin(self, address: str) -> Dict[str, Optional[float]]:
+    async def fetch_equity_and_margin(self, address: str) -> dict[str, Optional[float]]:
         """Fetch both equity and free margin for a single account."""
         try:
             # Ensure address has correct checksum
@@ -144,12 +146,12 @@ class EquityMonitor:
                 "timestamp": datetime.utcnow(),
                 "block_number": block["number"],
                 "raw_equity": str(equity_raw),
-                "raw_free_margin": str(free_margin_raw)
+                "raw_free_margin": str(free_margin_raw),
             }
             
             return {
                 "equity": equity_usdc,
-                "free_margin": free_margin_usdc
+                "free_margin": free_margin_usdc,
             }
             
         except ContractLogicError as e:
@@ -159,14 +161,14 @@ class EquityMonitor:
             self.logger.error(f"Failed to fetch equity/margin for {address}: {e}")
             return {"equity": None, "free_margin": None}
     
-    async def fetch_equity_margin_and_positions(self, address: str) -> Dict:
+    async def fetch_equity_margin_and_positions(self, address: str) -> dict:
         """Fetch equity, free margin, positions, and orders for a single account."""
         try:
             # Ensure address has correct checksum
             address = self.w3.to_checksum_address(address)
             
             # Initialize RISE client if needed
-            if not hasattr(self, 'rise_client'):
+            if not hasattr(self, "rise_client"):
                 self.rise_client = RiseClient()
             
             # Fetch all values concurrently
@@ -180,7 +182,7 @@ class EquityMonitor:
                 free_margin_task,
                 positions_task,
                 orders_task,
-                return_exceptions=True
+                return_exceptions=True,
             )
             
             # Handle potential errors
@@ -209,14 +211,14 @@ class EquityMonitor:
                 "timestamp": datetime.utcnow(),
                 "block_number": block["number"],
                 "raw_equity": str(equity_raw),
-                "raw_free_margin": str(free_margin_raw)
+                "raw_free_margin": str(free_margin_raw),
             }
             
             return {
                 "equity": equity_usdc,
                 "free_margin": free_margin_usdc,
                 "positions": positions,
-                "orders": orders
+                "orders": orders,
             }
             
         except ContractLogicError as e:
@@ -226,7 +228,7 @@ class EquityMonitor:
             self.logger.error(f"Failed to fetch equity/margin/positions/orders for {address}: {e}")
             return {"equity": None, "free_margin": None, "positions": [], "orders": []}
     
-    async def fetch_equity_batch(self, addresses: List[str]) -> Dict[str, Optional[float]]:
+    async def fetch_equity_batch(self, addresses: list[str]) -> dict[str, Optional[float]]:
         """Batch fetch equity for multiple accounts."""
         results = {}
         
@@ -241,7 +243,7 @@ class EquityMonitor:
             chunk_results = await asyncio.gather(*tasks, return_exceptions=True)
             
             # Process results
-            for addr, result in zip(chunk, chunk_results):
+            for addr, result in zip(chunk, chunk_results, strict=False):
                 if isinstance(result, Exception):
                     self.logger.error(f"Batch fetch error for {addr}: {result}")
                     results[addr] = None
@@ -254,7 +256,7 @@ class EquityMonitor:
         
         return results
     
-    def calculate_equity_changes(self, account_id: str, current_equity: float) -> Dict[str, Optional[float]]:
+    def calculate_equity_changes(self, account_id: str, current_equity: float) -> dict[str, Optional[float]]:
         """Calculate equity changes over different time periods."""
         snapshots = self.storage.get_equity_snapshots(account_id)
         
@@ -315,7 +317,7 @@ class EquityMonitor:
             "margin_used": equity - free_margin if free_margin else None,
             "positions_count": len(positions),
             "orders_count": len(orders),
-            "block_number": self.cache[address].get("block_number")
+            "block_number": self.cache[address].get("block_number"),
         }
         
         self.storage.save_equity_snapshot(account_id, snapshot, limit=self.history_limit)
@@ -341,20 +343,31 @@ class EquityMonitor:
             
             self.storage.save_account(account_id, account_data)
             
-            change_1h = changes.get('change_1h')
-            change_24h = changes.get('change_24h')
+            change_1h = changes.get("change_1h")
+            change_24h = changes.get("change_24h")
             
             self.logger.info(
                 f"Updated {account_data.get('handle', account_id)}: "
                 f"${equity:,.2f} (Free: ${free_margin:,.2f}) "
                 f"Positions: {len(positions)} Orders: {len(orders)} "
                 f"(1h: {f'{change_1h:+.1f}%' if change_1h is not None else 'N/A'}, "
-                f"24h: {f'{change_24h:+.1f}%' if change_24h is not None else 'N/A'})"
+                f"24h: {f'{change_24h:+.1f}%' if change_24h is not None else 'N/A'})",
             )
+            
+            # Publish account update event
+            total_pnl = equity - account_data.get("deposit_amount", 1000.0)
+            await publish_event(create_account_update(
+                profile_id=account_id,
+                address=address,
+                equity=equity,
+                free_margin=free_margin,
+                positions_count=len(positions),
+                total_pnl=total_pnl,
+            ))
         
         return True
     
-    async def update_all_accounts(self) -> Tuple[int, int]:
+    async def update_all_accounts(self) -> tuple[int, int]:
         """Update equity for all active accounts."""
         self.logger.info("Updating equity for all accounts...")
         
@@ -446,11 +459,11 @@ class EquityMonitor:
         
         self.logger.info("Stopped equity polling")
     
-    def get_account_equity(self, address: str) -> Optional[Dict]:
+    def get_account_equity(self, address: str) -> Optional[dict]:
         """Get cached equity data for an account."""
         return self.cache.get(address)
     
-    def get_equity_summary(self) -> Dict:
+    def get_equity_summary(self) -> dict:
         """Get summary of all tracked equity."""
         total_equity = sum(
             data["equity"] 
@@ -463,7 +476,7 @@ class EquityMonitor:
             "accounts_tracked": len(self.cache),
             "last_update": max(
                 (d["timestamp"] for d in self.cache.values()),
-                default=None
+                default=None,
             ),
             "consecutive_failures": self.consecutive_failures,
             "total_positions": sum(
@@ -473,7 +486,7 @@ class EquityMonitor:
             "total_orders": sum(
                 len(data.get("orders", []))
                 for data in self.cache.values()
-            )
+            ),
         }
 
 

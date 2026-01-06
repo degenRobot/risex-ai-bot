@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Final production verification."""
 
+
 import requests
-import json
 
 
 def final_check():
@@ -24,7 +24,7 @@ def final_check():
         print(f"  Active: {profile.get('is_active', False)}")
         
         # Get detailed info
-        if profile.get('handle'):
+        if profile.get("handle"):
             detail_resp = requests.get(f"{base_url}/api/profiles/{profile['handle']}")
             if detail_resp.status_code == 200:
                 detail = detail_resp.json()
@@ -32,9 +32,9 @@ def final_check():
                 print(f"  Free Margin: ${detail.get('free_margin', 0):,.2f}")
                 print(f"  Positions: {detail.get('position_count', 0)}")
                 
-                if detail.get('positions'):
+                if detail.get("positions"):
                     print("  Open Positions:")
-                    for pos in detail['positions']:
+                    for pos in detail["positions"]:
                         print(f"    - {pos['symbol']}: {pos['size']:.6f} @ ${pos['avg_price']:,.2f}")
     
     # Check recent logs summary

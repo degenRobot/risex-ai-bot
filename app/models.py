@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -23,9 +23,18 @@ class Persona(BaseModel):
     bio: str
     trading_style: TradingStyle
     risk_tolerance: float  # 0.0 to 1.0
-    favorite_assets: List[str]
-    personality_traits: List[str]
-    sample_posts: List[str]
+    favorite_assets: list[str]
+    personality_traits: list[str]
+    sample_posts: list[str]
+    
+    # New fields for enhanced prompt generation
+    personality_type: Optional[str] = None  # "leftCurve", "midCurve", etc.
+    extended_bio: Optional[str] = None  # Rich backstory for prompts
+    speech_patterns: Optional[dict] = None  # Style, vocabulary, response patterns
+    core_beliefs: Optional[dict] = None  # Trading philosophy and worldview
+    market_biases: Optional[list[str]] = None  # Market predispositions
+    interaction_style: Optional[dict] = None  # Chat behavior configuration
+    
     created_at: datetime = datetime.now()
 
 
@@ -44,6 +53,8 @@ class Account(BaseModel):
     deposited_at: Optional[datetime] = None
     deposit_amount: Optional[float] = None
     # Equity tracking
+    initial_equity: Optional[float] = None  # Starting equity for P&L tracking
+    equity_fetched_at: Optional[datetime] = None  # When initial equity was fetched
     latest_equity: Optional[float] = None
     equity_updated_at: Optional[datetime] = None
     equity_change_1h: Optional[float] = None
@@ -121,7 +132,7 @@ class TradingDecisionLog(BaseModel):
     total_pnl: float
     
     # Recent social activity
-    recent_posts: List[str]
+    recent_posts: list[str]
     
     # AI Decision
     decision: TradeDecision
@@ -144,7 +155,7 @@ class TradingSession(BaseModel):
     account_id: str
     start_time: datetime
     end_time: Optional[datetime] = None
-    decisions: List[TradingDecisionLog] = []
+    decisions: list[TradingDecisionLog] = []
     session_pnl: float = 0.0
     total_trades: int = 0
     successful_trades: int = 0

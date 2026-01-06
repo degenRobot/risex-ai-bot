@@ -5,8 +5,8 @@ import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Optional, List
 from threading import Lock
+from typing import Optional
 
 from ..services.rise_client import RiseClient
 
@@ -25,7 +25,7 @@ class GlobalMarketManager:
         return cls._instance
     
     def __init__(self):
-        if not hasattr(self, 'initialized'):
+        if not hasattr(self, "initialized"):
             self.rise_client = RiseClient()
             self.market_cache = {}
             self.markets_data = {}  # Loaded from markets.json
@@ -43,7 +43,7 @@ class GlobalMarketManager:
         try:
             markets_file = Path(__file__).parent.parent.parent / "data" / "markets.json"
             if markets_file.exists():
-                with open(markets_file, "r") as f:
+                with open(markets_file) as f:
                     self.markets_data = json.load(f)
                     self.logger.info(f"Loaded {len(self.markets_data.get('markets', {}))} markets from markets.json")
             else:
@@ -63,7 +63,7 @@ class GlobalMarketManager:
                 "source": "https://api.testnet.rise.trade/v1/markets",
                 "markets": {},
                 "market_id_map": {},
-                "symbol_map": {}
+                "symbol_map": {},
             }
             
             for market in markets:
@@ -104,7 +104,7 @@ class GlobalMarketManager:
         except Exception as e:
             self.logger.error(f"Failed to update markets file: {e}")
     
-    async def get_latest_data(self, force_update: bool = False) -> Dict[str, any]:
+    async def get_latest_data(self, force_update: bool = False) -> dict[str, any]:
         """Get latest market data, updating if stale or forced."""
         async with self._update_lock:
             now = datetime.now()
@@ -184,7 +184,7 @@ class GlobalMarketManager:
                 
                 # Metadata
                 "last_update": datetime.now(),
-                "update_count": self.market_cache.get("update_count", 0) + 1
+                "update_count": self.market_cache.get("update_count", 0) + 1,
             }
             
             self.last_update = datetime.now()
@@ -193,14 +193,14 @@ class GlobalMarketManager:
             self.logger.info(
                 f"✅ Market data updated: "
                 f"BTC ${self.market_cache['btc_price']:,.0f} ({self.market_cache['btc_change']:+.1%}), "
-                f"ETH ${self.market_cache['eth_price']:,.0f} ({self.market_cache['eth_change']:+.1%})"
+                f"ETH ${self.market_cache['eth_price']:,.0f} ({self.market_cache['eth_change']:+.1%})",
             )
             
         except Exception as e:
             self.logger.error(f"❌ Market data update failed: {e}")
             # Keep existing cache if update fails
     
-    async def get_market_by_symbol(self, symbol: str) -> Optional[Dict]:
+    async def get_market_by_symbol(self, symbol: str) -> Optional[dict]:
         """Get specific market data by symbol (e.g., 'BTC', 'ETH')."""
         data = await self.get_latest_data()
         
@@ -214,7 +214,7 @@ class GlobalMarketManager:
                 "market_id": data.get(f"{symbol.lower()}_market_id"),
                 "high_24h": data.get(f"{symbol.lower()}_high_24h"),
                 "low_24h": data.get(f"{symbol.lower()}_low_24h"),
-                "volume_24h": data.get(f"{symbol.lower()}_volume_24h", 0)
+                "volume_24h": data.get(f"{symbol.lower()}_volume_24h", 0),
             }
         
         # Search in markets list
@@ -224,7 +224,7 @@ class GlobalMarketManager:
         
         return None
     
-    def get_market_summary(self) -> Dict[str, str]:
+    def get_market_summary(self) -> dict[str, str]:
         """Get human-readable market summary."""
         if not self.market_cache:
             return {"status": "No market data available"}
@@ -237,7 +237,7 @@ class GlobalMarketManager:
         return {
             "btc": f"${btc_price:,.0f} ({btc_change:+.1%})",
             "eth": f"${eth_price:,.0f} ({eth_change:+.1%})",
-            "last_update": self.last_update.strftime("%H:%M:%S") if self.last_update else "Never"
+            "last_update": self.last_update.strftime("%H:%M:%S") if self.last_update else "Never",
         }
     
     async def start_background_updates(self):
@@ -282,15 +282,15 @@ class GlobalMarketManager:
                 pass
         self.logger.info("🛑 Stopped market data background updates")
     
-    def get_tracked_markets(self) -> List[Dict]:
+    def get_tracked_markets(self) -> list[dict]:
         """Get all markets we're tracking from markets.json."""
         return list(self.markets_data.get("markets", {}).values())
     
-    def get_market_by_id(self, market_id: int) -> Optional[Dict]:
+    def get_market_by_id(self, market_id: int) -> Optional[dict]:
         """Get market info by market ID."""
         return self.markets_data.get("markets", {}).get(str(market_id))
     
-    def get_market_by_symbol(self, symbol: str) -> Optional[Dict]:
+    def get_market_by_symbol(self, symbol: str) -> Optional[dict]:
         """Get market info by symbol (e.g., 'BTC', 'ETH')."""
         market_id = self.markets_data.get("symbol_map", {}).get(symbol)
         if market_id:

@@ -17,29 +17,29 @@ async def main():
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%H:%M:%S'
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%H:%M:%S",
     )
     
     # Command line arguments
     import argparse
-    parser = argparse.ArgumentParser(description='Run enhanced RISE AI trading bot')
+    parser = argparse.ArgumentParser(description="Run enhanced RISE AI trading bot")
     parser.add_argument(
-        '--interval', 
+        "--interval", 
         type=int, 
         default=60,
-        help='Trading cycle interval in seconds (default: 60)'
+        help="Trading cycle interval in seconds (default: 60)",
     )
     parser.add_argument(
-        '--dry-run',
-        action='store_true',
+        "--dry-run",
+        action="store_true",
         default=True,
-        help='Run in dry-run mode (no real trades)'
+        help="Run in dry-run mode (no real trades)",
     )
     parser.add_argument(
-        '--live',
-        action='store_true',
-        help='Run in LIVE mode (real trades)'
+        "--live",
+        action="store_true",
+        help="Run in LIVE mode (real trades)",
     )
     
     args = parser.parse_args()
@@ -52,12 +52,12 @@ async def main():
     print("="*70)
     print(f"Mode: {'🧪 DRY RUN' if dry_run else '🚨 LIVE TRADING'}")
     print(f"Cycle Interval: {args.interval} seconds")
-    print(f"Architecture: Parallel execution with tool calling")
+    print("Architecture: Parallel execution with tool calling")
     print("="*70 + "\n")
     
     if not dry_run:
         response = input("⚠️  WARNING: Live trading mode. Continue? (yes/no): ")
-        if response.lower() != 'yes':
+        if response.lower() != "yes":
             print("Aborted.")
             return
     
@@ -74,7 +74,7 @@ async def main():
             return
         
         print(f"\n✅ Bot initialized with {len(executor.active_profiles)} active profiles")
-        print(f"📡 Market data will update every 30 seconds")
+        print("📡 Market data will update every 30 seconds")
         print(f"🔄 Trading cycles will run every {args.interval} seconds")
         print("\nPress Ctrl+C to stop the bot\n")
         

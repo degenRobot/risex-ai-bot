@@ -3,10 +3,17 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Optional
 
-from ..models import Account, Persona, Trade, TradingDecisionLog, TradingSession, Position
-from ..pending_actions import PendingAction, ActionStatus
+from ..models import (
+    Account,
+    Persona,
+    Position,
+    Trade,
+    TradingDecisionLog,
+    TradingSession,
+)
+from ..pending_actions import ActionStatus, PendingAction
 
 
 class StorageError(Exception):
@@ -37,13 +44,13 @@ class JSONStorage:
         self.pending_actions_file = self.data_dir / "pending_actions.json"
         self.positions_file = self.data_dir / "positions.json"
     
-    def _load_json(self, file_path: Path) -> Dict:
+    def _load_json(self, file_path: Path) -> dict:
         """Load JSON data from file with error recovery."""
         if not file_path.exists():
             return {}
         
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding="utf-8") as f:
                 return json.load(f)
         except json.JSONDecodeError as e:
             # Handle corrupted JSON by backing up and resetting
@@ -56,30 +63,37 @@ class JSONStorage:
                 shutil.copy2(file_path, backup_path)
                 print(f"Backed up corrupted file to: {backup_path}")
                 
-                # Reset to empty JSON
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    json.dump({}, f)
-                print(f"Reset {file_path.name} to empty JSON")
-                
-                return {}
+                # DON'T reset critical files like accounts.json
+                if file_path.name == "accounts.json":
+                    print(f"CRITICAL: accounts.json is corrupted but NOT resetting to avoid data loss")
+                    print(f"Please manually fix the corrupted file at: {file_path}")
+                    # Return empty dict but don't overwrite the file
+                    return {}
+                else:
+                    # Reset other files to empty JSON
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        json.dump({}, f)
+                    print(f"Reset {file_path.name} to empty JSON")
+                    
+                    return {}
             except Exception as backup_error:
                 print(f"ERROR: Failed to backup/reset {file_path.name}: {backup_error}")
                 # Return empty dict instead of crashing
                 return {}
-        except IOError as e:
+        except OSError as e:
             print(f"ERROR: IO error loading {file_path.name}: {e}")
             return {}
     
-    def _save_json(self, file_path: Path, data: Dict) -> None:
+    def _save_json(self, file_path: Path, data: dict) -> None:
         """Save JSON data to file."""
         try:
             # Ensure parent directory exists
             file_path.parent.mkdir(parents=True, exist_ok=True)
             
             # Write with pretty formatting
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, default=str, ensure_ascii=False)
-        except IOError as e:
+        except OSError as e:
             raise StorageError(f"Failed to save {file_path.name}: {e}")
     
     # Account management
@@ -109,11 +123,11 @@ class JSONStorage:
         except Exception as e:
             raise StorageError(f"Failed to load account {account_id}: {e}")
     
-    def get_all_accounts(self) -> Dict[str, Dict]:
+    def get_all_accounts(self) -> dict[str, dict]:
         """Get all accounts as raw dict data."""
         return self._load_json(self.accounts_file)
     
-    def list_accounts(self) -> List[Account]:
+    def list_accounts(self) -> list[Account]:
         """List all accounts."""
         accounts = self._load_json(self.accounts_file)
         
@@ -150,7 +164,7 @@ class JSONStorage:
         trades[trade.account_id].append(trade.model_dump())
         self._save_json(self.trades_file, trades)
     
-    def get_trades(self, account_id: str, limit: int = 50) -> List[Trade]:
+    def get_trades(self, account_id: str, limit: int = 50) -> list[Trade]:
         """Get trades for account, most recent first."""
         trades = self._load_json(self.trades_file)
         account_trades = trades.get(account_id, [])
@@ -158,8 +172,8 @@ class JSONStorage:
         # Sort by timestamp (most recent first) and limit
         sorted_trades = sorted(
             account_trades, 
-            key=lambda t: t.get('timestamp', ''), 
-            reverse=True
+            key=lambda t: t.get("timestamp", ""), 
+            reverse=True,
         )
         
         result = []
@@ -172,7 +186,7 @@ class JSONStorage:
         
         return result
     
-    def get_all_trades(self, limit: int = 100) -> List[Trade]:
+    def get_all_trades(self, limit: int = 100) -> list[Trade]:
         """Get all trades across all accounts."""
         trades = self._load_json(self.trades_file)
         
@@ -209,7 +223,7 @@ class JSONStorage:
         except Exception as e:
             raise StorageError(f"Failed to load persona {handle}: {e}")
     
-    def list_personas(self) -> List[Persona]:
+    def list_personas(self) -> list[Persona]:
         """List all standalone personas."""
         personas = self._load_json(self.personas_file)
         
@@ -230,13 +244,13 @@ class JSONStorage:
             return True  # Non-existent files are "valid"
         
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding="utf-8") as f:
                 json.load(f)
             return True
         except Exception:
             return False
     
-    def repair_all_data_files(self) -> Dict[str, str]:
+    def repair_all_data_files(self) -> dict[str, str]:
         """Check and repair all data files, returning status for each."""
         results = {}
         data_files = [
@@ -251,7 +265,7 @@ class JSONStorage:
             self.positions_file,
             self.data_dir / "equity_snapshots.json",
             self.data_dir / "thought_processes.json",
-            self.data_dir / "markets.json"
+            self.data_dir / "markets.json",
         ]
         
         for file_path in data_files:
@@ -265,7 +279,7 @@ class JSONStorage:
         return results
     
     # Utility methods
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """Get storage statistics."""
         try:
             accounts = self.list_accounts()
@@ -285,7 +299,7 @@ class JSONStorage:
                     "accounts": self.accounts_file.exists(),
                     "trades": self.trades_file.exists(),
                     "personas": self.personas_file.exists(),
-                }
+                },
             }
         except Exception as e:
             return {"error": str(e)}
@@ -321,7 +335,7 @@ class JSONStorage:
         decisions[decision_log.account_id].append(decision_log.model_dump())
         self._save_json(self.decisions_file, decisions)
     
-    def get_trading_decisions(self, account_id: str, limit: int = 20) -> List[TradingDecisionLog]:
+    def get_trading_decisions(self, account_id: str, limit: int = 20) -> list[TradingDecisionLog]:
         """Get recent trading decisions for account."""
         decisions = self._load_json(self.decisions_file)
         account_decisions = decisions.get(account_id, [])
@@ -329,8 +343,8 @@ class JSONStorage:
         # Sort by timestamp (most recent first) and limit
         sorted_decisions = sorted(
             account_decisions, 
-            key=lambda d: d.get('timestamp', ''), 
-            reverse=True
+            key=lambda d: d.get("timestamp", ""), 
+            reverse=True,
         )
         
         result = []
@@ -343,7 +357,7 @@ class JSONStorage:
         
         return result
     
-    def get_recent_successful_decisions(self, account_id: str, days: int = 7) -> List[TradingDecisionLog]:
+    def get_recent_successful_decisions(self, account_id: str, days: int = 7) -> list[TradingDecisionLog]:
         """Get recent successful trading decisions for learning."""
         from datetime import timedelta
         
@@ -367,10 +381,10 @@ class JSONStorage:
         
         for account_id, account_decisions in decisions.items():
             for decision_data in account_decisions:
-                if decision_data.get('id') == decision_id:
-                    decision_data['outcome_tracked'] = True
-                    decision_data['outcome_pnl'] = pnl
-                    decision_data['outcome_reasoning'] = reasoning
+                if decision_data.get("id") == decision_id:
+                    decision_data["outcome_tracked"] = True
+                    decision_data["outcome_pnl"] = pnl
+                    decision_data["outcome_reasoning"] = reasoning
                     self._save_json(self.decisions_file, decisions)
                     return True
         
@@ -386,7 +400,7 @@ class JSONStorage:
         
         # Update existing session or add new one
         for i, existing_session in enumerate(sessions[session.account_id]):
-            if existing_session.get('id') == session.id:
+            if existing_session.get("id") == session.id:
                 sessions[session.account_id][i] = session.model_dump()
                 self._save_json(self.sessions_file, sessions)
                 return
@@ -395,7 +409,7 @@ class JSONStorage:
         sessions[session.account_id].append(session.model_dump())
         self._save_json(self.sessions_file, sessions)
     
-    def get_trading_sessions(self, account_id: str, limit: int = 10) -> List[TradingSession]:
+    def get_trading_sessions(self, account_id: str, limit: int = 10) -> list[TradingSession]:
         """Get recent trading sessions for account."""
         sessions = self._load_json(self.sessions_file)
         account_sessions = sessions.get(account_id, [])
@@ -403,8 +417,8 @@ class JSONStorage:
         # Sort by start_time (most recent first) and limit
         sorted_sessions = sorted(
             account_sessions, 
-            key=lambda s: s.get('start_time', ''), 
-            reverse=True
+            key=lambda s: s.get("start_time", ""), 
+            reverse=True,
         )
         
         result = []
@@ -417,7 +431,7 @@ class JSONStorage:
         
         return result
     
-    def get_trading_analytics(self, account_id: str) -> Dict:
+    def get_trading_analytics(self, account_id: str) -> dict:
         """Get trading analytics for an account."""
         decisions = self.get_trading_decisions(account_id, limit=100)
         sessions = self.get_trading_sessions(account_id, limit=20)
@@ -480,7 +494,7 @@ class JSONStorage:
         
         return None
     
-    def get_pending_actions(self, account_id: str, status: Optional[ActionStatus] = None) -> List[PendingAction]:
+    def get_pending_actions(self, account_id: str, status: Optional[ActionStatus] = None) -> list[PendingAction]:
         """Get pending actions for account, optionally filtered by status."""
         actions = self._load_json(self.pending_actions_file)
         account_actions = actions.get(account_id, {})
@@ -499,7 +513,7 @@ class JSONStorage:
         result.sort(key=lambda a: a.created_at, reverse=True)
         return result
     
-    def get_all_pending_actions(self) -> List[PendingAction]:
+    def get_all_pending_actions(self) -> list[PendingAction]:
         """Get all pending actions across all accounts."""
         actions = self._load_json(self.pending_actions_file)
         
@@ -576,7 +590,7 @@ class JSONStorage:
     
     # Chat and Profile Update Methods
     
-    def save_chat_session(self, session_data: Dict) -> bool:
+    def save_chat_session(self, session_data: dict) -> bool:
         """Save chat session data."""
         try:
             sessions = self._load_json(self.chat_sessions_file)
@@ -587,12 +601,12 @@ class JSONStorage:
         except Exception:
             return False
     
-    def get_chat_session(self, session_id: str) -> Optional[Dict]:
+    def get_chat_session(self, session_id: str) -> Optional[dict]:
         """Get chat session by ID."""
         sessions = self._load_json(self.chat_sessions_file)
         return sessions.get(session_id)
     
-    def update_profile_outlook(self, account_id: str, outlook_data: Dict) -> bool:
+    def update_profile_outlook(self, account_id: str, outlook_data: dict) -> bool:
         """Update profile's market outlook."""
         try:
             updates = self._load_json(self.profile_updates_file)
@@ -609,7 +623,7 @@ class JSONStorage:
         except Exception:
             return False
     
-    def update_profile_bias(self, account_id: str, bias_data: Dict) -> bool:
+    def update_profile_bias(self, account_id: str, bias_data: dict) -> bool:
         """Update profile's trading bias."""
         try:
             updates = self._load_json(self.profile_updates_file)
@@ -626,7 +640,7 @@ class JSONStorage:
         except Exception:
             return False
     
-    def add_personality_trait(self, account_id: str, trait_data: Dict) -> bool:
+    def add_personality_trait(self, account_id: str, trait_data: dict) -> bool:
         """Add personality trait update."""
         try:
             updates = self._load_json(self.profile_updates_file)
@@ -643,19 +657,19 @@ class JSONStorage:
         except Exception:
             return False
     
-    def get_profile_outlook(self, account_id: str) -> List[Dict]:
+    def get_profile_outlook(self, account_id: str) -> list[dict]:
         """Get profile's market outlook updates."""
         updates = self._load_json(self.profile_updates_file)
         profile_updates = updates.get(account_id, {})
         return profile_updates.get("outlooks", [])
     
-    def get_profile_bias(self, account_id: str) -> List[Dict]:
+    def get_profile_bias(self, account_id: str) -> list[dict]:
         """Get profile's trading bias updates."""
         updates = self._load_json(self.profile_updates_file)
         profile_updates = updates.get(account_id, {})
         return profile_updates.get("biases", [])
     
-    def get_personality_traits(self, account_id: str) -> List[Dict]:
+    def get_personality_traits(self, account_id: str) -> list[dict]:
         """Get personality trait updates."""
         updates = self._load_json(self.profile_updates_file)
         profile_updates = updates.get(account_id, {})
@@ -674,7 +688,7 @@ class JSONStorage:
         
         return last_time
     
-    def get_recent_trades(self, account_id: str, limit: int = 5) -> List[Dict]:
+    def get_recent_trades(self, account_id: str, limit: int = 5) -> list[dict]:
         """Get recent trades for account."""
         trades = self._load_json(self.trades_file)
         
@@ -685,16 +699,16 @@ class JSONStorage:
         sorted_trades = sorted(
             account_trades, 
             key=lambda x: x.get("timestamp", ""), 
-            reverse=True
+            reverse=True,
         )
         return sorted_trades[:limit]
     
-    def get_profile_updates(self, account_id: str) -> Optional[Dict]:
+    def get_profile_updates(self, account_id: str) -> Optional[dict]:
         """Get profile updates for account."""
         updates = self._load_json(self.profile_updates_file)
         return updates.get(account_id, {})
     
-    def save_profile_updates(self, account_id: str, updates: Dict) -> None:
+    def save_profile_updates(self, account_id: str, updates: dict) -> None:
         """Save profile updates for account."""
         all_updates = self._load_json(self.profile_updates_file)
         all_updates[account_id] = updates
@@ -716,7 +730,7 @@ class JSONStorage:
         positions[position.account_id].append(position_data)
         self._save_json(self.positions_file, positions)
     
-    def get_latest_positions(self, account_id: str) -> List[Position]:
+    def get_latest_positions(self, account_id: str) -> list[Position]:
         """Get the most recent position snapshot for an account."""
         positions = self._load_json(self.positions_file)
         account_positions = positions.get(account_id, [])
@@ -764,7 +778,7 @@ class JSONStorage:
         
         return False
     
-    def get_total_pnl(self, account_id: str) -> Dict[str, float]:
+    def get_total_pnl(self, account_id: str) -> dict[str, float]:
         """Get total P&L for an account from latest positions."""
         positions = self.get_latest_positions(account_id)
         
@@ -774,7 +788,7 @@ class JSONStorage:
         return {
             "unrealized_pnl": total_unrealized,
             "realized_pnl": total_realized,
-            "total_pnl": total_unrealized + total_realized
+            "total_pnl": total_unrealized + total_realized,
         }
     
     def update_decision_outcome(self, decision_id: str, trade_id: str, pnl: float, status: str) -> None:
@@ -794,7 +808,7 @@ class JSONStorage:
                     return
     
     # Equity snapshot management
-    def save_equity_snapshot(self, account_id: str, snapshot: Dict, limit: int = 200) -> None:
+    def save_equity_snapshot(self, account_id: str, snapshot: dict, limit: int = 200) -> None:
         """Save an equity snapshot for an account with history limit."""
         equity_file = self.data_dir / "equity_snapshots.json"
         snapshots = self._load_json(equity_file)
@@ -811,7 +825,7 @@ class JSONStorage:
         
         self._save_json(equity_file, snapshots)
     
-    def get_equity_snapshots(self, account_id: str) -> List[Dict]:
+    def get_equity_snapshots(self, account_id: str) -> list[dict]:
         """Get equity snapshots for an account."""
         equity_file = self.data_dir / "equity_snapshots.json"
         snapshots = self._load_json(equity_file)
