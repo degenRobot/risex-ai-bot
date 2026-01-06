@@ -63,12 +63,19 @@ class JSONStorage:
                 shutil.copy2(file_path, backup_path)
                 print(f"Backed up corrupted file to: {backup_path}")
                 
-                # Reset to empty JSON
-                with open(file_path, "w", encoding="utf-8") as f:
-                    json.dump({}, f)
-                print(f"Reset {file_path.name} to empty JSON")
-                
-                return {}
+                # DON'T reset critical files like accounts.json
+                if file_path.name == "accounts.json":
+                    print(f"CRITICAL: accounts.json is corrupted but NOT resetting to avoid data loss")
+                    print(f"Please manually fix the corrupted file at: {file_path}")
+                    # Return empty dict but don't overwrite the file
+                    return {}
+                else:
+                    # Reset other files to empty JSON
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        json.dump({}, f)
+                    print(f"Reset {file_path.name} to empty JSON")
+                    
+                    return {}
             except Exception as backup_error:
                 print(f"ERROR: Failed to backup/reset {file_path.name}: {backup_error}")
                 # Return empty dict instead of crashing

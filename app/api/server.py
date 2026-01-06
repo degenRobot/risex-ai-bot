@@ -1,6 +1,7 @@
 """FastAPI server for RISE AI Trading Bot."""
 
 import logging
+import os
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -70,6 +71,26 @@ async def startup():
             logger.info("All data files are valid")
     except Exception as e:
         logger.error(f"Failed to validate data files: {e}")
+    
+    # Special check for empty accounts.json on deployment
+    accounts = storage.get_all_accounts()
+    if not accounts:
+        logger.warning("No accounts found in accounts.json")
+        # Check if we're on Fly.io and have deployment accounts
+        if os.environ.get("FLY_APP_NAME") and os.path.exists("/app/data/accounts_deployment.json"):
+            logger.info("Loading deployment accounts on Fly.io...")
+            try:
+                import json
+                with open("/app/data/accounts_deployment.json", "r") as f:
+                    deployment_accounts = json.load(f)
+                
+                # Save each account
+                for account_id, account_data in deployment_accounts.items():
+                    storage.save_account(account_id, account_data)
+                
+                logger.info(f"Loaded {len(deployment_accounts)} deployment accounts")
+            except Exception as e:
+                logger.error(f"Failed to load deployment accounts: {e}")
     
     logger.info("API startup complete")
 
@@ -210,7 +231,11 @@ async def list_profiles(
                 is_trading = account.id in active_traders
                 
                 # Get basic stats
-                positions = []  # Would be fetched from RISE API
+                # Get positions from stored account data (saved by equity monitor)
+                all_accounts = storage.get_all_accounts()
+                stored_account = all_accounts.get(account.id, {})
+                positions = stored_account.get("positions", [])
+                
                 pending_actions = storage.get_pending_actions(
                     account.id, 
                     status=ActionStatus.PENDING,
